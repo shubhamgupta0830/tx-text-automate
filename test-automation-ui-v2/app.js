@@ -2132,7 +2132,7 @@ Click Actions → Open`;
                   <p className="form-hint">
                     <i className="fas fa-info-circle"></i>
                     {stepsMode === 'demo' 
-                      ? 'Demo steps and execution details from the Supply Chain example are pre-filled.'
+                      ? 'Demo steps and execution details from the Supply Chain example are pre-filled..'
                       : 'Each step will be resolved by browser_use API into sub-steps (browser actions)'
                     }
                   </p>
