@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trinamix Test Automation Platform</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #0F172A;
+            --primary-light: #1E293B;
+            --accent: #6366F1;
+            --accent-hover: #4F46E5;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --error: #EF4444;
+            --info: #3B82F6;
+            
+            --bg-primary: #FAFAF9;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F5F5F4;
+            
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --text-tertiary: #94A3B8;
+            
+            --border: #E2E8F0;
+            --border-light: #F1F5F9;
+            
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        #root {
+            min-height: 100vh;
+        }
+
+        /* Typography */
+        .font-display {
+            font-family: 'Playfair Display', serif;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Layout */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .logo-section {
+            padding: 2rem 1.5rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: 'Playfair Display', serif;
+            letter-spacing: -0.02em;
+        }
+
+        .logo-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            margin-top: 0.25rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .nav-section {
+            flex: 1;
+            padding: 1.5rem 0;
+            overflow-y: auto;
+        }
+
+        .nav-group {
+            margin-bottom: 2rem;
+        }
+
+        .nav-group-title {
+            padding: 0 1.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1.5rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+            position: relative;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+            color: var(--accent);
+            border-left-color: var(--accent);
+            font-weight: 600;
+        }
+
+        .nav-item svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .badge {
+            margin-left: auto;
+            background: var(--accent);
+            color: white;
+            font-size: 0.7rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-weight: 600;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            background: var(--bg-primary);
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(12px);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .header-title {
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: 'Playfair Display', serif;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .search-input {
+            width: 300px;
+            padding: 0.625rem 1rem 0.625rem 2.5rem;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--bg-primary);
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-tertiary);
+        }
+
+        .btn {
+            padding: 0.625rem 1.25rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .content {
+            padding: 2rem;
+        }
+
+        /* Dashboard Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 1.75rem;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent), var(--info));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-xl);
+            border-color: var(--accent);
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .stat-icon.success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .stat-icon.info { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+        .stat-icon.warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .stat-icon.accent { background: rgba(99, 102, 241, 0.1); color: var(--accent); }
+
+        .stat-trend {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+        }
+
+        .stat-trend.up {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .stat-trend.down {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: var(--primary);
+            font-family: 'Playfair Display', serif;
+            line-height: 1;
+        }
+
+        /* Execution Cards */
+        .execution-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .execution-card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 1.75rem;
+            transition: all 0.3s;
+            cursor: pointer;
+            animation: slideIn 0.5s ease-out forwards;
+            opacity: 0;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .execution-card:nth-child(1) { animation-delay: 0.05s; }
+        .execution-card:nth-child(2) { animation-delay: 0.1s; }
+        .execution-card:nth-child(3) { animation-delay: 0.15s; }
+        .execution-card:nth-child(4) { animation-delay: 0.2s; }
+        .execution-card:nth-child(5) { animation-delay: 0.25s; }
+
+        .execution-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--accent);
+        }
+
+        .execution-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .execution-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .execution-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 0.875rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .status-badge.running {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--info);
+        }
+
+        .status-badge.passed {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .status-badge.failed {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .progress-section {
+            margin-top: 1.5rem;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .progress-bar-container {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--info));
+            border-radius: 999px;
+            transition: width 0.5s ease-out;
+            position: relative;
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .step-preview {
+            display: grid;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.875rem;
+        }
+
+        .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        .step-icon.success {
+            background: var(--success);
+            color: white;
+        }
+
+        .step-icon.running {
+            background: var(--info);
+            color: white;
+            animation: spin 2s linear infinite;
+        }
+
+        .step-icon.pending {
+            background: var(--bg-tertiary);
+            color: var(--text-tertiary);
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .step-text {
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        .step-duration {
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
+        }
+
+        /* Screenshots */
+        .screenshot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .screenshot-item {
+            aspect-ratio: 16/9;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .screenshot-item:hover {
+            transform: scale(1.05);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--accent);
+        }
+
+        .screenshot-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 2rem;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 24px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: var(--shadow-xl);
+            animation: scaleIn 0.3s ease-out;
+        }
+
+        @keyframes scaleIn {
+            from {
+                transform: scale(0.9);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'Playfair Display', serif;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-tertiary);
+            transition: color 0.2s;
+            font-size: 1.5rem;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-content {
+            padding: 2rem;
+            max-height: calc(90vh - 80px);
+            overflow-y: auto;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 2px solid var(--border-light);
+            margin-bottom: 2rem;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .timeline-item {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+
+        .timeline-item:hover {
+            box-shadow: var(--shadow);
+        }
+
+        .code-block {
+            background: var(--primary);
+            color: #F1F5F9;
+            padding: 1.5rem;
+            border-radius: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            line-height: 1.6;
+        }
+
+        .json-viewer {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+        }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .float {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        /* Utility Classes */
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+        .mt-3 { margin-top: 1.5rem; }
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+        .mb-3 { margin-bottom: 1.5rem; }
+        .text-center { text-align: center; }
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 1rem; }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-tertiary);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .empty-state-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .empty-state-text {
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // Mock Data Generator
+        const generateMockData = () => ({
+            stats: {
+                totalTests: 127,
+                passRate: 94.2,
+                avgDuration: 145000,
+                activeRuns: 3
+            },
+            executions: [
+                {
+                    id: 'exec-001',
+                    testName: 'Login Flow Validation',
+                    status: 'running',
+                    startTime: new Date(Date.now() - 120000),
+                    progress: {
+                        currentStep: 5,
+                        totalSteps: 12,
+                        percentage: 42
+                    },
+                    steps: [
+                        { id: 1, name: 'Navigate to login page', status: 'success', duration: 2300 },
+                        { id: 2, name: 'Enter username', status: 'success', duration: 1200 },
+                        { id: 3, name: 'Enter password', status: 'success', duration: 1100 },
+                        { id: 4, name: 'Click login button', status: 'success', duration: 800 },
+                        { id: 5, name: 'Verify dashboard load', status: 'running', duration: 0 },
+                        { id: 6, name: 'Extract user data', status: 'pending', duration: 0 },
+                    ]
+                },
+                {
+                    id: 'exec-002',
+                    testName: 'Product Search & Filter',
+                    status: 'passed',
+                    startTime: new Date(Date.now() - 300000),
+                    endTime: new Date(Date.now() - 150000),
+                    duration: 150000,
+                    progress: {
+                        currentStep: 8,
+                        totalSteps: 8,
+                        percentage: 100
+                    },
+                    steps: [
+                        { id: 1, name: 'Open product page', status: 'success', duration: 2100 },
+                        { id: 2, name: 'Enter search term', status: 'success', duration: 1500 },
+                        { id: 3, name: 'Apply filters', status: 'success', duration: 2800 },
+                        { id: 4, name: 'Verify results', status: 'success', duration: 1900 },
+                    ]
+                },
+                {
+                    id: 'exec-003',
+                    testName: 'Checkout Process',
+                    status: 'failed',
+                    startTime: new Date(Date.now() - 600000),
+                    endTime: new Date(Date.now() - 480000),
+                    duration: 120000,
+                    progress: {
+                        currentStep: 6,
+                        totalSteps: 10,
+                        percentage: 60
+                    },
+                    error: 'Payment gateway timeout after 30s'
+                },
+                {
+                    id: 'exec-004',
+                    testName: 'User Registration',
+                    status: 'passed',
+                    startTime: new Date(Date.now() - 900000),
+                    endTime: new Date(Date.now() - 800000),
+                    duration: 100000,
+                    progress: {
+                        currentStep: 7,
+                        totalSteps: 7,
+                        percentage: 100
+                    }
+                },
+                {
+                    id: 'exec-005',
+                    testName: 'API Integration Test',
+                    status: 'running',
+                    startTime: new Date(Date.now() - 60000),
+                    progress: {
+                        currentStep: 3,
+                        totalSteps: 15,
+                        percentage: 20
+                    }
+                }
+            ]
+        });
+
+        // Main App Component
+        function App() {
+            const [data, setData] = useState(generateMockData());
+            const [activeView, setActiveView] = useState('dashboard');
+            const [selectedExecution, setSelectedExecution] = useState(null);
+
+            // Simulate real-time updates
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setData(prevData => {
+                        const newData = { ...prevData };
+                        newData.executions = newData.executions.map(exec => {
+                            if (exec.status === 'running') {
+                                const newProgress = Math.min(exec.progress.percentage + Math.random() * 10, 100);
+                                const newStep = Math.min(
+                                    exec.progress.currentStep + (newProgress > exec.progress.percentage + 5 ? 1 : 0),
+                                    exec.progress.totalSteps
+                                );
+                                
+                                return {
+                                    ...exec,
+                                    progress: {
+                                        ...exec.progress,
+                                        percentage: newProgress,
+                                        currentStep: newStep
+                                    }
+                                };
+                            }
+                            return exec;
+                        });
+                        return newData;
+                    });
+                }, 2000);
+
+                return () => clearInterval(interval);
+            }, []);
+
+            return (
+                <div className="app-container">
+                    <Sidebar activeView={activeView} setActiveView={setActiveView} />
+                    <div className="main-content">
+                        <Header />
+                        <div className="content">
+                            {activeView === 'dashboard' && (
+                                <Dashboard 
+                                    data={data} 
+                                    onExecutionClick={setSelectedExecution}
+                                />
+                            )}
+                            {activeView === 'executions' && (
+                                <ExecutionsList 
+                                    executions={data.executions}
+                                    onExecutionClick={setSelectedExecution}
+                                />
+                            )}
+                            {activeView === 'tests' && <TestsView />}
+                        </div>
+                    </div>
+                    {selectedExecution && (
+                        <ExecutionDetailModal 
+                            execution={selectedExecution}
+                            onClose={() => setSelectedExecution(null)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Sidebar Component
+        function Sidebar({ activeView, setActiveView }) {
+            const navItems = [
+                { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+                { id: 'executions', icon: '▶️', label: 'Test Runs', badge: 3 },
+                { id: 'tests', icon: '📝', label: 'Test Library', badge: 127 },
+                { id: 'analytics', icon: '📈', label: 'Analytics' },
+                { id: 'settings', icon: '⚙️', label: 'Settings' }
+            ];
+
+            return (
+                <div className="sidebar">
+                    <div className="logo-section">
+                        <div className="logo">Trinamix</div>
+                        <div className="logo-subtitle">Test Automation</div>
+                    </div>
+                    <div className="nav-section">
+                        <div className="nav-group">
+                            <div className="nav-group-title">Main</div>
+                            {navItems.map(item => (
+                                <div
+                                    key={item.id}
+                                    className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+                                    onClick={() => setActiveView(item.id)}
+                                >
+                                    <span>{item.icon}</span>
+                                    <span>{item.label}</span>
+                                    {item.badge && <span className="badge">{item.badge}</span>}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Header Component
+        function Header() {
+            return (
+                <div className="header">
+                    <h1 className="header-title">Test Automation</h1>
+                    <div className="header-actions">
+                        <div className="search-box">
+                            <span className="search-icon">🔍</span>
+                            <input 
+                                type="text" 
+                                className="search-input" 
+                                placeholder="Search tests, executions..."
+                            />
+                        </div>
+                        <button className="btn btn-primary">
+                            ▶️ Run Test
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Dashboard Component
+        function Dashboard({ data, onExecutionClick }) {
+            return (
+                <div>
+                    <div className="stats-grid">
+                        <div className="stat-card">
+                            <div className="stat-header">
+                                <div className="stat-icon accent">📝</div>
+                                <div className="stat-trend up">↑ 12%</div>
+                            </div>
+                            <div className="stat-label">Total Tests</div>
+                            <div className="stat-value">{data.stats.totalTests}</div>
+                        </div>
+
+                        <div className="stat-card">
+                            <div className="stat-header">
+                                <div className="stat-icon success">✓</div>
+                                <div className="stat-trend up">↑ 3.2%</div>
+                            </div>
+                            <div className="stat-label">Pass Rate</div>
+                            <div className="stat-value">{data.stats.passRate}%</div>
+                        </div>
+
+                        <div className="stat-card">
+                            <div className="stat-header">
+                                <div className="stat-icon info">⏱️</div>
+                                <div className="stat-trend down">↓ 8%</div>
+                            </div>
+                            <div className="stat-label">Avg Duration</div>
+                            <div className="stat-value">{Math.round(data.stats.avgDuration / 1000)}s</div>
+                        </div>
+
+                        <div className="stat-card float">
+                            <div className="stat-header">
+                                <div className="stat-icon warning">▶️</div>
+                            </div>
+                            <div className="stat-label">Active Runs</div>
+                            <div className="stat-value">{data.stats.activeRuns}</div>
+                        </div>
+                    </div>
+
+                    <h2 className="mb-2" style={{ fontSize: '1.5rem', fontWeight: 600 }}>Recent Executions</h2>
+                    
+                    <div className="execution-grid">
+                        {data.executions.map(execution => (
+                            <ExecutionCard 
+                                key={execution.id}
+                                execution={execution}
+                                onClick={() => onExecutionClick(execution)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Execution Card Component
+        function ExecutionCard({ execution, onClick }) {
+            const formatDuration = (ms) => {
+                if (!ms) return 'In progress...';
+                const seconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(seconds / 60);
+                return `${minutes}m ${seconds % 60}s`;
+            };
+
+            const formatTime = (date) => {
+                return date.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit'
+                });
+            };
+
+            return (
+                <div className="execution-card" onClick={onClick}>
+                    <div className="execution-header">
+                        <div>
+                            <div className="execution-title">{execution.testName}</div>
+                            <div className="execution-meta">
+                                <span>Started: {formatTime(execution.startTime)}</span>
+                                <span>•</span>
+                                <span>{formatDuration(execution.duration || Date.now() - execution.startTime.getTime())}</span>
+                            </div>
+                        </div>
+                        <div className={`status-badge ${execution.status}`}>
+                            {execution.status === 'running' && <span className="pulse-dot"></span>}
+                            {execution.status === 'passed' && '✓'}
+                            {execution.status === 'failed' && '✗'}
+                            <span>{execution.status.charAt(0).toUpperCase() + execution.status.slice(1)}</span>
+                        </div>
+                    </div>
+
+                    {execution.status === 'running' && (
+                        <div className="progress-section">
+                            <div className="progress-label">
+                                <span>Step {execution.progress.currentStep} of {execution.progress.totalSteps}</span>
+                                <span>{Math.round(execution.progress.percentage)}%</span>
+                            </div>
+                            <div className="progress-bar-container">
+                                <div 
+                                    className="progress-bar" 
+                                    style={{ width: `${execution.progress.percentage}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {execution.steps && (
+                        <div className="step-preview">
+                            {execution.steps.slice(0, 3).map(step => (
+                                <div key={step.id} className="step-item">
+                                    <div className={`step-icon ${step.status}`}>
+                                        {step.status === 'success' && '✓'}
+                                        {step.status === 'running' && '↻'}
+                                        {step.status === 'pending' && '○'}
+                                    </div>
+                                    <span className="step-text">{step.name}</span>
+                                    {step.duration > 0 && (
+                                        <span className="step-duration">{(step.duration / 1000).toFixed(1)}s</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {execution.error && (
+                        <div style={{ 
+                            marginTop: '1rem', 
+                            padding: '0.75rem', 
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            borderRadius: '8px',
+                            fontSize: '0.875rem',
+                            color: 'var(--error)'
+                        }}>
+                            ⚠️ {execution.error}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Execution Detail Modal
+        function ExecutionDetailModal({ execution, onClose }) {
+            const [activeTab, setActiveTab] = useState('timeline');
+
+            return (
+                <div className="modal-overlay" onClick={onClose}>
+                    <div className="modal" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div>
+                                <div className="modal-title">{execution.testName}</div>
+                                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                    Execution ID: {execution.id}
+                                </div>
+                            </div>
+                            <button className="modal-close" onClick={onClose}>×</button>
+                        </div>
+                        
+                        <div className="tabs">
+                            <button 
+                                className={`tab ${activeTab === 'timeline' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('timeline')}
+                            >
+                                📋 Timeline
+                            </button>
+                            <button 
+                                className={`tab ${activeTab === 'screenshots' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('screenshots')}
+                            >
+                                📸 Screenshots
+                            </button>
+                            <button 
+                                className={`tab ${activeTab === 'data' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('data')}
+                            >
+                                📊 Data
+                            </button>
+                            <button 
+                                className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('logs')}
+                            >
+                                📝 Logs
+                            </button>
+                        </div>
+
+                        <div className="modal-content">
+                            {activeTab === 'timeline' && <TimelineView execution={execution} />}
+                            {activeTab === 'screenshots' && <ScreenshotsView />}
+                            {activeTab === 'data' && <DataView />}
+                            {activeTab === 'logs' && <LogsView />}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Timeline View
+        function TimelineView({ execution }) {
+            if (!execution.steps) {
+                return (
+                    <div className="empty-state">
+                        <div className="empty-state-icon">📋</div>
+                        <div className="empty-state-title">No steps available</div>
+                        <div className="empty-state-text">Step details will appear here once the execution progresses</div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="timeline">
+                    {execution.steps.map(step => (
+                        <div key={step.id} className="timeline-item">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <div className={`step-icon ${step.status}`}>
+                                        {step.status === 'success' && '✓'}
+                                        {step.status === 'running' && '↻'}
+                                        {step.status === 'pending' && '○'}
+                                    </div>
+                                    <strong>Step {step.id}: {step.name}</strong>
+                                </div>
+                                <span className="status-badge" style={{ fontSize: '0.75rem' }}>
+                                    {step.status}
+                                </span>
+                            </div>
+                            
+                            <div className="code-block mt-2">
+                                Agent Reasoning: "Located element and verified visibility. Proceeding with interaction."
+                                <br/><br/>
+                                Action: click_element
+                                <br/>
+                                Target: button[data-testid="submit-form"]
+                                <br/>
+                                Duration: {step.duration ? `${(step.duration / 1000).toFixed(2)}s` : 'N/A'}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Screenshots View
+        function ScreenshotsView() {
+            const mockScreenshots = Array(8).fill(null).map((_, i) => ({
+                id: i,
+                step: i + 1,
+                timestamp: new Date()
+            }));
+
+            return (
+                <div>
+                    <div className="screenshot-grid">
+                        {mockScreenshots.map(screenshot => (
+                            <div key={screenshot.id} className="screenshot-item">
+                                <div style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'white',
+                                    fontSize: '1.5rem',
+                                    fontWeight: 'bold'
+                                }}>
+                                    #{screenshot.step}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Data View
+        function DataView() {
+            const mockData = {
+                userProfile: {
+                    username: "john_doe",
+                    email: "john@example.com",
+                    accountType: "Premium"
+                },
+                extractedProducts: [
+                    { id: "PRD-001", name: "Widget Pro", price: 49.99 },
+                    { id: "PRD-002", name: "Gadget Plus", price: 79.99 }
+                ]
+            };
+
+            return (
+                <div>
+                    <div className="json-viewer">
+                        <pre>{JSON.stringify(mockData, null, 2)}</pre>
+                    </div>
+                </div>
+            );
+        }
+
+        // Logs View
+        function LogsView() {
+            const mockLogs = [
+                { time: '14:32:01.123', level: 'INFO', message: 'Agent initialized successfully' },
+                { time: '14:32:01.456', level: 'DEBUG', message: 'Browser session created' },
+                { time: '14:32:02.789', level: 'INFO', message: 'Navigating to target URL' },
+                { time: '14:32:05.234', level: 'DEBUG', message: 'DOM loaded: 142 elements detected' },
+                { time: '14:32:05.567', level: 'INFO', message: 'Screenshot captured' },
+                { time: '14:32:06.890', level: 'WARN', message: 'Element load slower than expected (500ms)' },
+            ];
+
+            return (
+                <div className="code-block">
+                    {mockLogs.map((log, i) => (
+                        <div key={i} style={{ marginBottom: '0.5rem' }}>
+                            <span style={{ color: '#94A3B8' }}>{log.time}</span>
+                            {' '}
+                            <span style={{ 
+                                color: log.level === 'ERROR' ? '#EF4444' : 
+                                       log.level === 'WARN' ? '#F59E0B' : 
+                                       log.level === 'DEBUG' ? '#94A3B8' : '#10B981',
+                                fontWeight: 600
+                            }}>[{log.level}]</span>
+                            {' '}
+                            <span>{log.message}</span>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Tests View
+        function TestsView() {
+            return (
+                <div className="empty-state">
+                    <div className="empty-state-icon">📝</div>
+                    <div className="empty-state-title">Test Library</div>
+                    <div className="empty-state-text">
+                        Your test library will appear here. Create your first test to get started.
+                    </div>
+                    <button className="btn btn-primary" style={{ marginTop: '1.5rem' }}>
+                        ➕ Create Test
+                    </button>
+                </div>
+            );
+        }
+
+        // Executions List View
+        function ExecutionsList({ executions, onExecutionClick }) {
+            return (
+                <div>
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>All Test Executions</h2>
+                        <div className="flex gap-2">
+                            <button className="btn btn-secondary">🔍 Filter</button>
+                            <button className="btn btn-secondary">📊 Export</button>
+                        </div>
+                    </div>
+                    <div className="execution-grid">
+                        {executions.map(execution => (
+                            <ExecutionCard 
+                                key={execution.id}
+                                execution={execution}
+                                onClick={() => onExecutionClick(execution)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Render App
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
