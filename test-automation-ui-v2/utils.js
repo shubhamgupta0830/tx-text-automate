@@ -53,7 +53,10 @@ const Utils = {
       'running': 'info',
       'in-progress': 'info',
       'pending': 'warning',
-      'skipped': 'warning'
+      'skipped': 'warning',
+      'cancelled': 'warning',
+      'stopped': 'warning',
+      'interrupted': 'interrupted'
     };
     return statusMap[status?.toLowerCase()] || 'default';
   },
@@ -68,7 +71,10 @@ const Utils = {
       'running': 'fa-spinner fa-spin',
       'in-progress': 'fa-spinner fa-spin',
       'pending': 'fa-clock',
-      'skipped': 'fa-forward'
+      'skipped': 'fa-forward',
+      'cancelled': 'fa-ban',
+      'stopped': 'fa-ban',
+      'interrupted': 'fa-exclamation-triangle'
     };
     return iconMap[status?.toLowerCase()] || 'fa-question-circle';
   },
@@ -108,7 +114,7 @@ const Utils = {
 // ===== Browser Use API Service =====
 const BrowserUseAPI = {
   // API Configuration
-  API_KEY: 'bu_sq01V2GsXGttkJDhHj2xFpMtfsDkfGWWYh37fR6rSmY',
+  API_KEY: 'bu_CMx8eOdVbfDbcQcTl_FdozsaGfR3hV3O_l65Is4Erg0',
   BASE_URL: 'https://api.browser-use.com/api/v2',
 
   // Create headers for API requests
@@ -174,15 +180,17 @@ const BrowserUseAPI = {
    * @returns {Promise<Object>}
    */
   stopTask: async (taskId) => {
+    // Per Browser Use API v2 spec: PATCH /tasks/{task_id} with { action: 'stop' }
+    // TaskUpdateAction enum values: 'stop', 'stop_task_and_session'
     const response = await fetch(`${BrowserUseAPI.BASE_URL}/tasks/${taskId}`, {
       method: 'PATCH',
       headers: BrowserUseAPI.getHeaders(),
-      body: JSON.stringify({ status: 'stopped' })
+      body: JSON.stringify({ action: 'stop' })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to stop task: ${response.status}`);
+      throw new Error(errorData.detail || errorData.message || `Failed to stop task: ${response.status}`);
     }
 
     return await response.json();
@@ -320,6 +328,8 @@ const BrowserUseAPI = {
       
       return {
         stepId: step.id,
+        stepOrder: step.order,
+        stepDescription: step.description,
         status: stepStatus,
         startTime: startTime,
         endTime: relevantSteps.length > 0 ? endTime : null,

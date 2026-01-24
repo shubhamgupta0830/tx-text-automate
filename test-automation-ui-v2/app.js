@@ -370,6 +370,7 @@ const StepItem = ({ step, stepResult, isExpanded, onToggle, executionId, onViewS
   const statusClass = Utils.getStatusClass(step.status);
   const subSteps = stepResult?.subSteps || [];
   const [activeSubStep, setActiveSubStep] = useState(null);
+  const [selectedScreenshotIndex, setSelectedScreenshotIndex] = useState(null);
   
   // Get all screenshots from sub-steps
   const screenshots = subSteps
@@ -379,6 +380,36 @@ const StepItem = ({ step, stepResult, isExpanded, onToggle, executionId, onViewS
       screenshot: ss.screenshot,
       description: ss.description
     }));
+  
+  // Screenshot navigation handlers
+  const openScreenshot = (index) => setSelectedScreenshotIndex(index);
+  const closeScreenshot = () => setSelectedScreenshotIndex(null);
+  const goToPrevScreenshot = (e) => {
+    e.stopPropagation();
+    setSelectedScreenshotIndex(prev => (prev > 0 ? prev - 1 : screenshots.length - 1));
+  };
+  const goToNextScreenshot = (e) => {
+    e.stopPropagation();
+    setSelectedScreenshotIndex(prev => (prev < screenshots.length - 1 ? prev + 1 : 0));
+  };
+  
+  // Keyboard navigation for screenshots
+  useEffect(() => {
+    if (selectedScreenshotIndex === null) return;
+    
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        setSelectedScreenshotIndex(prev => (prev > 0 ? prev - 1 : screenshots.length - 1));
+      } else if (e.key === 'ArrowRight') {
+        setSelectedScreenshotIndex(prev => (prev < screenshots.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'Escape') {
+        setSelectedScreenshotIndex(null);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedScreenshotIndex, screenshots.length]);
   
   // Handler to view step detail (internal navigation)
   const handleViewStepDetail = (e) => {
@@ -455,9 +486,17 @@ const StepItem = ({ step, stepResult, isExpanded, onToggle, executionId, onViewS
               </div>
               <div className="screenshots-grid">
                 {screenshots.map((ss, idx) => (
-                  <div key={idx} className="screenshot-thumb">
+                  <div 
+                    key={idx} 
+                    className="screenshot-thumb clickable"
+                    onClick={() => openScreenshot(idx)}
+                    title="Click to view full size"
+                  >
                     <img src={ss.screenshot} alt={ss.description} />
                     <div className="screenshot-label">Sub-step #{ss.subStepOrder}</div>
+                    <div className="screenshot-overlay">
+                      <i className="fas fa-search-plus"></i>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -493,6 +532,39 @@ const StepItem = ({ step, stepResult, isExpanded, onToggle, executionId, onViewS
         <div className="step-error">
           <i className="fas fa-exclamation-circle"></i>
           <span>{step.error}</span>
+        </div>
+      )}
+      
+      {/* Screenshot Modal with Navigation */}
+      {selectedScreenshotIndex !== null && screenshots[selectedScreenshotIndex] && (
+        <div className="screenshot-modal" onClick={closeScreenshot}>
+          <div className="screenshot-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="close-modal" onClick={closeScreenshot}>
+              <i className="fas fa-times"></i>
+            </button>
+            
+            {/* Left Navigation Arrow */}
+            {screenshots.length > 1 && (
+              <button className="screenshot-nav-btn prev" onClick={goToPrevScreenshot}>
+                <i className="fas fa-chevron-left"></i>
+              </button>
+            )}
+            
+            <img src={screenshots[selectedScreenshotIndex].screenshot} alt="Full size screenshot" />
+            
+            {/* Right Navigation Arrow */}
+            {screenshots.length > 1 && (
+              <button className="screenshot-nav-btn next" onClick={goToNextScreenshot}>
+                <i className="fas fa-chevron-right"></i>
+              </button>
+            )}
+            
+            {/* Screenshot Info */}
+            <div className="screenshot-modal-info">
+              <span className="screenshot-counter">{selectedScreenshotIndex + 1} / {screenshots.length}</span>
+              <span className="screenshot-description">Sub-step #{screenshots[selectedScreenshotIndex].subStepOrder}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -778,9 +850,13 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
   const scenario = MOCK_DATA.scenarios.find(s => s.id === scenarioId);
   const execution = MOCK_DATA.executions.find(e => e.scenarioId === scenarioId);
   const [expandedSteps, setExpandedSteps] = useState({});
+  const [activeTab, setActiveTab] = useState('steps');
   const [isRunning, setIsRunning] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [runStatus, setRunStatus] = useState(null);
   const [, forceUpdate] = useState(0);
+  const currentTaskIdRef = React.useRef(null);
+  const isCancelledRef = React.useRef(false);
   
   if (!scenario) {
     return (
@@ -798,6 +874,7 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
   const handleRunScenario = async () => {
     setIsRunning(true);
     setRunStatus('Creating task with Browser Use API...');
+    isCancelledRef.current = false;
     
     const newExecutionId = `exec-run-${Date.now()}`;
     const currentTime = new Date().toISOString();
@@ -829,6 +906,8 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
         },
         stepResults: scenario.steps.map(step => ({
           stepId: step.id,
+          stepOrder: step.order,
+          stepDescription: step.description,
           status: 'running',
           startTime: currentTime,
           endTime: null,
@@ -858,6 +937,12 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
       }
       
       MOCK_DATA.stats.runningScenarios += 1;
+      
+      // Persist data immediately after starting the run
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      StorageHelper.saveStats(MOCK_DATA.stats);
+      
       forceUpdate(n => n + 1);
       
       // Create the task
@@ -873,6 +958,9 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
       
       setRunStatus(`Task created (ID: ${createResult.id}). Executing...`);
       
+      // Store task ID for potential cancellation
+      currentTaskIdRef.current = createResult.id;
+      
       // Update execution with task ID
       const execIndex = MOCK_DATA.executions.findIndex(e => e.id === newExecutionId);
       if (execIndex >= 0) {
@@ -884,6 +972,11 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
       const finalResult = await BrowserUseAPI.pollTaskUntilComplete(
         createResult.id,
         (taskUpdate) => {
+          // Check if cancelled
+          if (isCancelledRef.current) {
+            throw new Error('Run cancelled by user');
+          }
+          
           const stepCount = taskUpdate.steps?.length || 0;
           setRunStatus(`Executing... (${stepCount} browser actions completed)`);
           
@@ -896,12 +989,21 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
               newExecutionId
             );
             MOCK_DATA.executions[execIdx] = updatedExecution;
+            
+            // Persist progress updates to localStorage
+            StorageHelper.saveExecutions(MOCK_DATA.executions);
+            
             forceUpdate(n => n + 1);
           }
         },
         2000,
         600000
       );
+      
+      // Check if cancelled after polling completes
+      if (isCancelledRef.current) {
+        return; // Already handled in handleCancelRun
+      }
       
       // Transform final result
       const finalExecution = BrowserUseAPI.transformTaskToExecution(
@@ -943,14 +1045,24 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
         MOCK_DATA.stats.failedScenarios += 1;
       }
       
+      // Persist final results to localStorage
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      StorageHelper.saveStats(MOCK_DATA.stats);
+      
       setIsRunning(false);
       setRunStatus(null);
+      currentTaskIdRef.current = null;
       forceUpdate(n => n + 1);
       
       const statusEmoji = finalExecution.status === 'passed' ? '✅' : '❌';
       alert(`${statusEmoji} Scenario execution complete!\n\nStatus: ${finalExecution.status.toUpperCase()}\nSteps: ${finalResult.steps?.length || 0} browser actions\n${finalResult.output ? `\nOutput: ${finalResult.output}` : ''}`);
       
     } catch (error) {
+      // Check if this was a cancellation
+      if (error.message === 'Run cancelled by user') {
+        return; // Already handled in handleCancelRun
+      }
       console.error('Browser Use API error:', error);
       
       // Update execution status to failed
@@ -980,12 +1092,74 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
       MOCK_DATA.stats.runningScenarios = Math.max(0, MOCK_DATA.stats.runningScenarios - 1);
       MOCK_DATA.stats.failedScenarios += 1;
       
+      // Persist failure state to localStorage
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      StorageHelper.saveStats(MOCK_DATA.stats);
+      
       setIsRunning(false);
       setRunStatus(null);
+      currentTaskIdRef.current = null;
       forceUpdate(n => n + 1);
       
       alert(`❌ Error executing scenario: ${error.message}`);
     }
+  };
+  
+  // Function to cancel the running scenario
+  const handleCancelRun = async () => {
+    if (!currentTaskIdRef.current || isCancelling) return;
+    
+    setIsCancelling(true);
+    setRunStatus('Cancelling run...');
+    
+    // Set the cancellation flag - this will stop the polling loop
+    isCancelledRef.current = true;
+    
+    // Try to stop the task via API (best effort, may fail)
+    try {
+      await BrowserUseAPI.stopTask(currentTaskIdRef.current);
+    } catch (apiError) {
+      console.warn('Could not stop task via API (continuing with local cancellation):', apiError);
+    }
+    
+    // Update execution status to cancelled
+    const execIndex = MOCK_DATA.executions.findIndex(e => e.metadata?.browserUseTaskId === currentTaskIdRef.current);
+    if (execIndex >= 0) {
+      MOCK_DATA.executions[execIndex].status = 'cancelled';
+      MOCK_DATA.executions[execIndex].endTime = new Date().toISOString();
+      MOCK_DATA.executions[execIndex].logs.push({
+        timestamp: new Date().toISOString(),
+        level: 'warning',
+        message: 'Run cancelled by user'
+      });
+    }
+    
+    // Update scenario status
+    const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === scenario.id);
+    if (scenarioIndex >= 0) {
+      MOCK_DATA.scenarios[scenarioIndex].status = 'cancelled';
+      MOCK_DATA.scenarios[scenarioIndex].lastRun = {
+        ...MOCK_DATA.scenarios[scenarioIndex].lastRun,
+        status: 'cancelled',
+        date: new Date().toISOString()
+      };
+    }
+    
+    MOCK_DATA.stats.runningScenarios = Math.max(0, MOCK_DATA.stats.runningScenarios - 1);
+    
+    // Persist cancellation state to localStorage
+    StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+    StorageHelper.saveExecutions(MOCK_DATA.executions);
+    StorageHelper.saveStats(MOCK_DATA.stats);
+    
+    setIsRunning(false);
+    setIsCancelling(false);
+    setRunStatus(null);
+    currentTaskIdRef.current = null;
+    forceUpdate(n => n + 1);
+    
+    alert('⚠️ Run cancelled successfully');
   };
   
   const toggleStep = (stepId) => {
@@ -1023,9 +1197,19 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
         </div>
         <div className="header-actions">
           {isRunning ? (
-            <div className="running-status-inline">
-              <i className="fas fa-spinner fa-spin"></i>
-              <span>{runStatus || 'Running...'}</span>
+            <div className="running-status-container">
+              <div className="running-status-inline">
+                <i className="fas fa-spinner fa-spin"></i>
+                <span>{runStatus || 'Running...'}</span>
+              </div>
+              <button 
+                className="btn btn-danger btn-cancel"
+                onClick={handleCancelRun}
+                disabled={isCancelling}
+              >
+                <i className={`fas ${isCancelling ? 'fa-spinner fa-spin' : 'fa-stop'}`}></i>
+                {isCancelling ? 'Cancelling...' : 'Cancel Run'}
+              </button>
             </div>
           ) : (
             <>
@@ -1085,42 +1269,123 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
         </div>
       </div>
       
-      {/* Steps Section */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">
-            <div className="hierarchy-indicator small">
-              <i className="fas fa-list-ol"></i>
-              <span>STEPS</span>
+      {/* Tabs */}
+      <div className="tabs mb-4">
+        <button 
+          className={`tab ${activeTab === 'steps' ? 'active' : ''}`}
+          onClick={() => setActiveTab('steps')}
+        >
+          <i className="fas fa-list-ol"></i>
+          User Defined Steps
+        </button>
+        <button 
+          className={`tab ${activeTab === 'agent' ? 'active' : ''}`}
+          onClick={() => setActiveTab('agent')}
+        >
+          <i className="fas fa-robot"></i>
+          Agent View
+        </button>
+        <button 
+          className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
+          onClick={() => setActiveTab('logs')}
+        >
+          <i className="fas fa-terminal"></i>
+          Logs
+        </button>
+      </div>
+      
+      {/* User Defined Steps Tab Content */}
+      {activeTab === 'steps' && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">
+              <div className="hierarchy-indicator small">
+                <i className="fas fa-list-ol"></i>
+                <span>STEPS</span>
+              </div>
+              User-defined Steps
+            </h3>
+            <div className="card-actions">
+              <button className="btn btn-ghost btn-sm" onClick={expandAll}>
+                <i className="fas fa-expand-alt"></i>
+                Expand All
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={collapseAll}>
+                <i className="fas fa-compress-alt"></i>
+                Collapse All
+              </button>
             </div>
-            User-defined Steps
-          </h3>
-          <div className="card-actions">
-            <button className="btn btn-ghost btn-sm" onClick={expandAll}>
-              <i className="fas fa-expand-alt"></i>
-              Expand All
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={collapseAll}>
-              <i className="fas fa-compress-alt"></i>
-              Collapse All
-            </button>
+          </div>
+          
+          <div className="steps-list">
+            {scenario.steps?.map((step) => (
+              <StepItem
+                key={step.id}
+                step={step}
+                stepResult={getStepResult(step.id)}
+                isExpanded={expandedSteps[step.id]}
+                onToggle={() => toggleStep(step.id)}
+                executionId={execution?.id}
+                onViewStepDetail={onViewStepDetail}
+              />
+            ))}
           </div>
         </div>
-        
-        <div className="steps-list">
-          {scenario.steps?.map((step) => (
-            <StepItem
-              key={step.id}
-              step={step}
-              stepResult={getStepResult(step.id)}
-              isExpanded={expandedSteps[step.id]}
-              onToggle={() => toggleStep(step.id)}
-              executionId={execution?.id}
-              onViewStepDetail={onViewStepDetail}
-            />
-          ))}
-        </div>
-      </div>
+      )}
+      
+      {/* Agent View Tab Content */}
+      {activeTab === 'agent' && (
+        execution ? (
+          <AgentViewTab execution={execution} />
+        ) : (
+          <div className="card">
+            <div className="empty-state">
+              <i className="fas fa-robot"></i>
+              <h3>No Execution Data</h3>
+              <p>Run this scenario to see the agent view with browser actions.</p>
+            </div>
+          </div>
+        )
+      )}
+      
+      {/* Logs Tab Content */}
+      {activeTab === 'logs' && (
+        execution ? (
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title">
+                <i className="fas fa-terminal"></i>
+                Execution Logs
+              </h3>
+            </div>
+            <div className="logs-container">
+              {execution.logs?.map((log, index) => (
+                <div key={index} className={`log-entry ${log.level}`}>
+                  <span className="log-timestamp">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={`log-level ${log.level}`}>{log.level.toUpperCase()}</span>
+                  <span className="log-message">{log.message}</span>
+                </div>
+              ))}
+              {(!execution.logs || execution.logs.length === 0) && (
+                <div className="empty-state small">
+                  <i className="fas fa-file-alt"></i>
+                  <p>No logs available</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="card">
+            <div className="empty-state">
+              <i className="fas fa-terminal"></i>
+              <h3>No Execution Data</h3>
+              <p>Run this scenario to see execution logs.</p>
+            </div>
+          </div>
+        )
+      )}
       
       {/* View Execution Link */}
       {execution && (
@@ -1511,7 +1776,7 @@ const ExecutionDetailPage = ({ executionId, onBack, onViewStepDetail }) => {
           onClick={() => setActiveTab('steps')}
         >
           <i className="fas fa-list-ol"></i>
-          Steps & Sub-steps
+          User Defined Steps
         </button>
         <button 
           className={`tab ${activeTab === 'agent' ? 'active' : ''}`}
@@ -1538,7 +1803,7 @@ const ExecutionDetailPage = ({ executionId, onBack, onViewStepDetail }) => {
                 <i className="fas fa-list-ol"></i>
                 <span>STEPS</span>
               </div>
-              Execution Steps
+              User-defined Steps
             </h3>
             <div className="card-actions">
               <button className="btn btn-ghost btn-sm" onClick={expandAll}>
@@ -1633,7 +1898,11 @@ const HistoryPage = ({ onViewExecution }) => {
             </thead>
             <tbody>
               {executions.map(exec => (
-                <tr key={exec.id}>
+                <tr 
+                  key={exec.id} 
+                  className="clickable-row"
+                  onClick={() => onViewExecution(exec.id)}
+                >
                   <td>
                     <code className="execution-id-cell">{exec.id}</code>
                   </td>
@@ -1655,7 +1924,10 @@ const HistoryPage = ({ onViewExecution }) => {
                   <td>
                     <button 
                       className="btn btn-ghost btn-sm"
-                      onClick={() => onViewExecution(exec.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewExecution(exec.id);
+                      }}
                     >
                       <i className="fas fa-eye"></i>
                       View
@@ -1678,8 +1950,13 @@ const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated }) => {
   const [parsedSteps, setParsedSteps] = useState([]);
   const [stepsMode, setStepsMode] = useState(null); // 'demo' or 'custom'
   const [isRunning, setIsRunning] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [runStatus, setRunStatus] = useState(null);
   const [runProgress, setRunProgress] = useState(null);
+  const currentTaskIdRef = React.useRef(null);
+  const currentExecutionRef = React.useRef(null);
+  const currentScenarioRef = React.useRef(null);
+  const isCancelledRef = React.useRef(false);
   
   // Demo steps from supply chain example
   const demoStepsText = `Login to Oracle Fusion Cloud
@@ -1801,6 +2078,8 @@ Click Actions → Open`;
       // Create initial step results for custom scenarios
       newStepResults = newSteps.map((step) => ({
         stepId: step.id,
+        stepOrder: step.order,
+        stepDescription: step.description,
         status: 'running',
         startTime: currentTime,
         endTime: null,
@@ -1877,6 +2156,11 @@ Click Actions → Open`;
       MOCK_DATA.stats.runningScenarios += 1;
     }
     
+    // Persist data immediately after creation
+    StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+    StorageHelper.saveExecutions(MOCK_DATA.executions);
+    StorageHelper.saveStats(MOCK_DATA.stats);
+    
     // Notify parent
     if (onScenarioCreated) {
       onScenarioCreated(newScenarioId);
@@ -1892,6 +2176,7 @@ Click Actions → Open`;
     // For custom mode, call Browser Use API
     setIsRunning(true);
     setRunStatus('Creating task with Browser Use API...');
+    isCancelledRef.current = false;
     
     try {
       // Build the task prompt from objective and steps
@@ -1912,6 +2197,11 @@ Click Actions → Open`;
       setRunStatus(`Task created (ID: ${createResult.id}). Executing...`);
       setRunProgress({ taskId: createResult.id, steps: 0 });
       
+      // Store references for potential cancellation
+      currentTaskIdRef.current = createResult.id;
+      currentExecutionRef.current = newExecutionId;
+      currentScenarioRef.current = newScenarioId;
+      
       // Update execution with task ID
       newExecution.metadata.browserUseTaskId = createResult.id;
       newExecution.metadata.browserUseSessionId = createResult.sessionId;
@@ -1920,6 +2210,11 @@ Click Actions → Open`;
       const finalResult = await BrowserUseAPI.pollTaskUntilComplete(
         createResult.id,
         (taskUpdate) => {
+          // Check if cancelled
+          if (isCancelledRef.current) {
+            throw new Error('Run cancelled by user');
+          }
+          
           const stepCount = taskUpdate.steps?.length || 0;
           setRunProgress({ taskId: createResult.id, steps: stepCount, status: taskUpdate.status });
           setRunStatus(`Executing... (${stepCount} browser actions completed)`);
@@ -1929,11 +2224,19 @@ Click Actions → Open`;
           if (execIndex >= 0) {
             const updatedExecution = BrowserUseAPI.transformTaskToExecution(taskUpdate, newScenario, newExecutionId);
             MOCK_DATA.executions[execIndex] = updatedExecution;
+            
+            // Persist progress updates to localStorage
+            StorageHelper.saveExecutions(MOCK_DATA.executions);
           }
         },
         2000,
         600000
       );
+      
+      // Check if cancelled after polling completes
+      if (isCancelledRef.current) {
+        return; // Already handled in handleCancelRun
+      }
       
       // Transform final result
       const finalExecution = BrowserUseAPI.transformTaskToExecution(finalResult, newScenario, newExecutionId);
@@ -1971,8 +2274,16 @@ Click Actions → Open`;
         MOCK_DATA.stats.failedScenarios += 1;
       }
       
+      // Persist final results to localStorage
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      StorageHelper.saveStats(MOCK_DATA.stats);
+      
       setIsRunning(false);
       setRunStatus(null);
+      currentTaskIdRef.current = null;
+      currentExecutionRef.current = null;
+      currentScenarioRef.current = null;
       
       const statusEmoji = finalExecution.status === 'passed' ? '✅' : '❌';
       alert(`${statusEmoji} Scenario "${objective}" execution complete!\n\nStatus: ${finalExecution.status.toUpperCase()}\nSteps: ${finalResult.steps?.length || 0} browser actions\n${finalResult.output ? `\nOutput: ${finalResult.output}` : ''}`);
@@ -1980,6 +2291,11 @@ Click Actions → Open`;
       onNavigate('scenarios');
       
     } catch (error) {
+      // Check if this was a cancellation
+      if (error.message === 'Run cancelled by user') {
+        return; // Already handled in handleCancelRun
+      }
+      
       console.error('Browser Use API error:', error);
       
       // Update execution status to failed
@@ -2010,12 +2326,85 @@ Click Actions → Open`;
       MOCK_DATA.stats.runningScenarios = Math.max(0, MOCK_DATA.stats.runningScenarios - 1);
       MOCK_DATA.stats.failedScenarios += 1;
       
+      // Persist failure state to localStorage
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      StorageHelper.saveStats(MOCK_DATA.stats);
+      
       setIsRunning(false);
       setRunStatus(null);
+      currentTaskIdRef.current = null;
+      currentExecutionRef.current = null;
+      currentScenarioRef.current = null;
       
       alert(`❌ Error executing scenario: ${error.message}\n\nThe scenario has been created but execution failed.`);
       onNavigate('scenarios');
     }
+  };
+  
+  // Function to cancel the running scenario
+  const handleCancelRun = async () => {
+    if (!currentTaskIdRef.current || isCancelling) return;
+    
+    setIsCancelling(true);
+    setRunStatus('Cancelling run...');
+    
+    // Set the cancellation flag - this will stop the polling loop
+    isCancelledRef.current = true;
+    
+    // Try to stop the task via API (best effort, may fail)
+    try {
+      await BrowserUseAPI.stopTask(currentTaskIdRef.current);
+    } catch (apiError) {
+      console.warn('Could not stop task via API (continuing with local cancellation):', apiError);
+    }
+    
+    const executionId = currentExecutionRef.current;
+    const scenarioId = currentScenarioRef.current;
+    
+    // Update execution status to cancelled
+    if (executionId) {
+      const execIndex = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+      if (execIndex >= 0) {
+        MOCK_DATA.executions[execIndex].status = 'cancelled';
+        MOCK_DATA.executions[execIndex].endTime = new Date().toISOString();
+        MOCK_DATA.executions[execIndex].logs.push({
+          timestamp: new Date().toISOString(),
+          level: 'warning',
+          message: 'Run cancelled by user'
+        });
+      }
+    }
+    
+    // Update scenario status
+    if (scenarioId) {
+      const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === scenarioId);
+      if (scenarioIndex >= 0) {
+        MOCK_DATA.scenarios[scenarioIndex].status = 'cancelled';
+        MOCK_DATA.scenarios[scenarioIndex].lastRun = {
+          ...MOCK_DATA.scenarios[scenarioIndex].lastRun,
+          status: 'cancelled',
+          date: new Date().toISOString()
+        };
+      }
+    }
+    
+    MOCK_DATA.stats.runningScenarios = Math.max(0, MOCK_DATA.stats.runningScenarios - 1);
+    
+    // Persist cancellation state to localStorage
+    StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+    StorageHelper.saveExecutions(MOCK_DATA.executions);
+    StorageHelper.saveStats(MOCK_DATA.stats);
+    
+    setIsRunning(false);
+    setIsCancelling(false);
+    setRunStatus(null);
+    currentTaskIdRef.current = null;
+    currentExecutionRef.current = null;
+    currentScenarioRef.current = null;
+    
+    alert('⚠️ Run cancelled. Scenario has been created but execution was stopped.');
+    onNavigate('scenarios');
   };
   
   return (
@@ -2132,7 +2521,7 @@ Click Actions → Open`;
                   <p className="form-hint">
                     <i className="fas fa-info-circle"></i>
                     {stepsMode === 'demo' 
-                      ? 'Demo steps and execution details from the Supply Chain example are pre-filled..'
+                      ? 'Demo steps and execution details from the Supply Chain example are pre-filled.'
                       : 'Each step will be resolved by browser_use API into sub-steps (browser actions)'
                     }
                   </p>
@@ -2207,6 +2596,14 @@ Click Actions → Open`;
                       )}
                     </div>
                   )}
+                  <button 
+                    className="btn btn-danger btn-cancel btn-block mt-3"
+                    onClick={handleCancelRun}
+                    disabled={isCancelling}
+                  >
+                    <i className={`fas ${isCancelling ? 'fa-spinner fa-spin' : 'fa-stop'}`}></i>
+                    {isCancelling ? 'Cancelling...' : 'Cancel Run'}
+                  </button>
                 </div>
               ) : (
                 <button 
@@ -2580,7 +2977,7 @@ const TimelineTab = ({ subSteps }) => {
 
 // ===== Screenshots Tab Content =====
 const ScreenshotsTab = ({ subSteps }) => {
-  const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [selectedScreenshotIndex, setSelectedScreenshotIndex] = useState(null);
   
   const screenshots = subSteps
     .filter(ss => ss.screenshot)
@@ -2593,6 +2990,36 @@ const ScreenshotsTab = ({ subSteps }) => {
       timestamp: ss.timestamp,
       url: ss.browserState?.url
     }));
+  
+  // Screenshot navigation handlers
+  const openScreenshot = (index) => setSelectedScreenshotIndex(index);
+  const closeScreenshot = () => setSelectedScreenshotIndex(null);
+  const goToPrevScreenshot = (e) => {
+    e.stopPropagation();
+    setSelectedScreenshotIndex(prev => (prev > 0 ? prev - 1 : screenshots.length - 1));
+  };
+  const goToNextScreenshot = (e) => {
+    e.stopPropagation();
+    setSelectedScreenshotIndex(prev => (prev < screenshots.length - 1 ? prev + 1 : 0));
+  };
+  
+  // Keyboard navigation for screenshots
+  useEffect(() => {
+    if (selectedScreenshotIndex === null) return;
+    
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        setSelectedScreenshotIndex(prev => (prev > 0 ? prev - 1 : screenshots.length - 1));
+      } else if (e.key === 'ArrowRight') {
+        setSelectedScreenshotIndex(prev => (prev < screenshots.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'Escape') {
+        setSelectedScreenshotIndex(null);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedScreenshotIndex, screenshots.length]);
   
   if (screenshots.length === 0) {
     return (
@@ -2608,11 +3035,11 @@ const ScreenshotsTab = ({ subSteps }) => {
     <div className="screenshots-tab">
       <div className="screenshot-timeline">
         <div className="timeline-track">
-          {screenshots.map((ss) => (
+          {screenshots.map((ss, idx) => (
             <button
               key={ss.id}
-              className={`timeline-point ${selectedScreenshot === ss.id ? 'active' : ''} ${Utils.getStatusClass(ss.status)}`}
-              onClick={() => setSelectedScreenshot(ss.id)}
+              className={`timeline-point ${selectedScreenshotIndex === idx ? 'active' : ''} ${Utils.getStatusClass(ss.status)}`}
+              onClick={() => openScreenshot(idx)}
               title={`Sub-step #${ss.subStepOrder}: ${ss.description}`}
             >
               <span className="point-number">{ss.subStepOrder}</span>
@@ -2622,11 +3049,11 @@ const ScreenshotsTab = ({ subSteps }) => {
       </div>
       
       <div className="screenshot-grid">
-        {screenshots.map(ss => (
+        {screenshots.map((ss, idx) => (
           <div 
             key={ss.id} 
-            className={`screenshot-card ${selectedScreenshot === ss.id ? 'selected' : ''}`}
-            onClick={() => setSelectedScreenshot(ss.id === selectedScreenshot ? null : ss.id)}
+            className={`screenshot-card ${selectedScreenshotIndex === idx ? 'selected' : ''}`}
+            onClick={() => openScreenshot(idx)}
           >
             <div className="screenshot-image">
               <img src={ss.screenshot} alt={ss.description} />
@@ -2648,14 +3075,22 @@ const ScreenshotsTab = ({ subSteps }) => {
         ))}
       </div>
       
-      {selectedScreenshot && (
-        <div className="screenshot-lightbox" onClick={() => setSelectedScreenshot(null)}>
+      {selectedScreenshotIndex !== null && screenshots[selectedScreenshotIndex] && (
+        <div className="screenshot-lightbox" onClick={closeScreenshot}>
           <div className="lightbox-content" onClick={e => e.stopPropagation()}>
-            <button className="lightbox-close" onClick={() => setSelectedScreenshot(null)}>
+            <button className="lightbox-close" onClick={closeScreenshot}>
               <i className="fas fa-times"></i>
             </button>
+            
+            {/* Left Navigation Arrow */}
+            {screenshots.length > 1 && (
+              <button className="screenshot-nav-btn prev" onClick={goToPrevScreenshot}>
+                <i className="fas fa-chevron-left"></i>
+              </button>
+            )}
+            
             {(() => {
-              const ss = screenshots.find(s => s.id === selectedScreenshot);
+              const ss = screenshots[selectedScreenshotIndex];
               return ss ? (
                 <>
                   <img src={ss.screenshot} alt={ss.description} />
@@ -2667,6 +3102,20 @@ const ScreenshotsTab = ({ subSteps }) => {
                 </>
               ) : null;
             })()}
+            
+            {/* Right Navigation Arrow */}
+            {screenshots.length > 1 && (
+              <button className="screenshot-nav-btn next" onClick={goToNextScreenshot}>
+                <i className="fas fa-chevron-right"></i>
+              </button>
+            )}
+            
+            {/* Screenshot Counter */}
+            {screenshots.length > 1 && (
+              <div className="screenshot-modal-info lightbox-counter">
+                <span className="screenshot-counter">{selectedScreenshotIndex + 1} / {screenshots.length}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -3144,14 +3593,65 @@ const App = () => {
     const savedExecutions = StorageHelper.loadExecutions();
     const savedStats = StorageHelper.loadStats();
     
+    let dataModified = false;
+    let runningCount = 0;
+    
     if (savedScenarios && savedScenarios.length > 0) {
+      // Handle interrupted 'running' scenarios - mark them as 'interrupted'
+      // since a page refresh means the run was not completed
+      savedScenarios.forEach(scenario => {
+        if (scenario.status === 'running') {
+          scenario.status = 'interrupted';
+          if (scenario.lastRun) {
+            scenario.lastRun.status = 'interrupted';
+          }
+          dataModified = true;
+        }
+      });
       MOCK_DATA.scenarios = savedScenarios;
     }
+    
     if (savedExecutions && savedExecutions.length > 0) {
+      // Handle interrupted 'running' executions
+      savedExecutions.forEach(execution => {
+        if (execution.status === 'running') {
+          execution.status = 'interrupted';
+          execution.endTime = new Date().toISOString();
+          execution.logs = execution.logs || [];
+          execution.logs.push({
+            timestamp: new Date().toISOString(),
+            level: 'warning',
+            message: 'Execution was interrupted due to page refresh or browser close'
+          });
+          // Mark any running step results as interrupted
+          if (execution.stepResults) {
+            execution.stepResults.forEach(stepResult => {
+              if (stepResult.status === 'running') {
+                stepResult.status = 'interrupted';
+                stepResult.endTime = new Date().toISOString();
+              }
+            });
+          }
+          dataModified = true;
+        }
+      });
       MOCK_DATA.executions = savedExecutions;
     }
+    
     if (savedStats) {
+      // Reset running count since page refresh means nothing is actually running
+      if (savedStats.runningScenarios > 0) {
+        savedStats.runningScenarios = 0;
+        dataModified = true;
+      }
       MOCK_DATA.stats = savedStats;
+    }
+    
+    // Persist the cleaned up data if we made any modifications
+    if (dataModified) {
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      StorageHelper.saveStats(MOCK_DATA.stats);
     }
     
     // Trigger re-render after loading data
