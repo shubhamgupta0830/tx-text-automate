@@ -752,7 +752,7 @@ const Dashboard = ({ onNavigate, onViewScenario, onViewExecution }) => {
                 <tr 
                   key={exec.id} 
                   className="clickable-row"
-                  onClick={() => onViewExecution(exec.id)}
+                  onClick={() => onViewExecution(exec.scenarioId, exec.id)}
                 >
                   <td>
                     <div className="objective-cell">
@@ -846,9 +846,12 @@ const ScenariosPage = ({ onViewScenario, onNavigate, onDeleteScenario }) => {
 };
 
 // ===== Scenario Detail Page =====
-const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDetail }) => {
+const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail }) => {
   const scenario = MOCK_DATA.scenarios.find(s => s.id === scenarioId);
-  const execution = MOCK_DATA.executions.find(e => e.scenarioId === scenarioId);
+  // Find execution by executionId if provided, otherwise find by scenarioId
+  const execution = executionId 
+    ? MOCK_DATA.executions.find(e => e.id === executionId)
+    : MOCK_DATA.executions.find(e => e.scenarioId === scenarioId);
   const [expandedSteps, setExpandedSteps] = useState({});
   const [activeTab, setActiveTab] = useState('steps');
   const [isRunning, setIsRunning] = useState(false);
@@ -1229,9 +1232,9 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
       {/* Objective Card */}
       <div className="objective-card card mb-4">
         <div className="objective-header">
-          <div className={`objective-status ${Utils.getStatusClass(scenario.status)}`}>
-            <i className={`fas ${Utils.getStatusIcon(scenario.status)}`}></i>
-            <span>{scenario.status}</span>
+          <div className={`objective-status ${Utils.getStatusClass(execution?.status || scenario.status)}`}>
+            <i className={`fas ${Utils.getStatusIcon(execution?.status || scenario.status)}`}></i>
+            <span>{(execution?.status || scenario.status).toUpperCase()}</span>
           </div>
           <div className="objective-tags">
             {scenario.tags?.map(tag => (
@@ -1249,12 +1252,52 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
           <p className="objective-description">{scenario.description}</p>
         </div>
         
+        {/* Execution Progress - shown when execution exists */}
+        {execution && (
+          <div className="execution-progress-section">
+            <ProgressBar 
+              percentage={execution.progress?.percentage || 0} 
+              status={execution.status}
+            />
+            <span className="progress-label">
+              Step {execution.progress?.currentStep || 0} of {execution.progress?.totalSteps || scenario.steps?.length || 0}
+            </span>
+          </div>
+        )}
+        
         <div className="objective-meta">
           <div className="meta-item">
             <i className="fas fa-list-ol"></i>
             <span>{scenario.steps?.length || 0} Steps</span>
           </div>
-          {scenario.lastRun && (
+          {execution ? (
+            <>
+              <div className="meta-item">
+                <i className="fas fa-hashtag"></i>
+                <span>ID: {execution.id}</span>
+              </div>
+              <div className="meta-item">
+                <i className="fas fa-clock"></i>
+                <span>Started: {Utils.formatDate(execution.startTime)}</span>
+              </div>
+              {execution.endTime && (
+                <div className="meta-item">
+                  <i className="fas fa-flag-checkered"></i>
+                  <span>Ended: {Utils.formatDate(execution.endTime)}</span>
+                </div>
+              )}
+              <div className="meta-item">
+                <i className="fas fa-stopwatch"></i>
+                <span>Duration: {Utils.formatDuration(execution.duration)}</span>
+              </div>
+              {execution.metadata?.triggeredBy && (
+                <div className="meta-item">
+                  <i className="fas fa-user"></i>
+                  <span>{execution.metadata.triggeredBy}</span>
+                </div>
+              )}
+            </>
+          ) : scenario.lastRun && (
             <>
               <div className="meta-item">
                 <i className="fas fa-clock"></i>
@@ -1387,16 +1430,6 @@ const ScenarioDetailPage = ({ scenarioId, onBack, onViewExecution, onViewStepDet
         )
       )}
       
-      {/* View Execution Link */}
-      {execution && (
-        <div className="execution-link-card card mt-4">
-          <div className="card-content clickable" onClick={() => onViewExecution(execution.id)}>
-            <i className="fas fa-external-link-alt"></i>
-            <span>View Full Execution Details</span>
-            <i className="fas fa-chevron-right"></i>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -1670,207 +1703,6 @@ const AgentViewTab = ({ execution }) => {
   );
 };
 
-// ===== Execution Detail Page =====
-const ExecutionDetailPage = ({ executionId, onBack, onViewStepDetail }) => {
-  const execution = MOCK_DATA.executions.find(e => e.id === executionId);
-  const [expandedSteps, setExpandedSteps] = useState({});
-  const [activeTab, setActiveTab] = useState('steps');
-  
-  if (!execution) {
-    return (
-      <div className="page-content">
-        <div className="empty-state">
-          <i className="fas fa-exclamation-circle"></i>
-          <h3>Execution not found</h3>
-          <button className="btn btn-secondary" onClick={onBack}>Go Back</button>
-        </div>
-      </div>
-    );
-  }
-  
-  const toggleStep = (stepId) => {
-    setExpandedSteps(prev => ({
-      ...prev,
-      [stepId]: !prev[stepId]
-    }));
-  };
-  
-  const expandAll = () => {
-    const allExpanded = {};
-    execution.stepResults?.forEach(step => {
-      allExpanded[step.stepId] = true;
-    });
-    setExpandedSteps(allExpanded);
-  };
-  
-  const collapseAll = () => {
-    setExpandedSteps({});
-  };
-  
-  return (
-    <div className="page-content">
-      <div className="page-header">
-        <div>
-          <button className="back-btn" onClick={onBack}>
-            <i className="fas fa-arrow-left"></i>
-            Back
-          </button>
-          <h1 className="page-title">Execution Details</h1>
-        </div>
-      </div>
-      
-      {/* Execution Summary */}
-      <div className="execution-summary card mb-4">
-        <div className="execution-header">
-          <div className={`execution-status-large ${Utils.getStatusClass(execution.status)}`}>
-            <i className={`fas ${Utils.getStatusIcon(execution.status)}`}></i>
-            <span>{execution.status.toUpperCase()}</span>
-          </div>
-          <div className="execution-id">ID: {execution.id}</div>
-        </div>
-        
-        <div className="objective-content">
-          <div className="hierarchy-indicator">
-            <i className="fas fa-bullseye"></i>
-            <span>OBJECTIVE</span>
-          </div>
-          <h2 className="objective-title">{execution.scenarioObjective}</h2>
-        </div>
-        
-        <div className="execution-progress">
-          <ProgressBar 
-            percentage={execution.progress.percentage} 
-            status={execution.status}
-          />
-          <span className="progress-label">
-            Step {execution.progress.currentStep} of {execution.progress.totalSteps}
-          </span>
-        </div>
-        
-        <div className="execution-meta">
-          <div className="meta-item">
-            <i className="fas fa-clock"></i>
-            <span>Started: {Utils.formatDate(execution.startTime)}</span>
-          </div>
-          {execution.endTime && (
-            <div className="meta-item">
-              <i className="fas fa-flag-checkered"></i>
-              <span>Ended: {Utils.formatDate(execution.endTime)}</span>
-            </div>
-          )}
-          <div className="meta-item">
-            <i className="fas fa-stopwatch"></i>
-            <span>Duration: {Utils.formatDuration(execution.duration)}</span>
-          </div>
-          <div className="meta-item">
-            <i className="fas fa-user"></i>
-            <span>{execution.metadata?.executedBy}</span>
-          </div>
-        </div>
-      </div>
-      
-      {/* Tabs */}
-      <div className="tabs mb-4">
-        <button 
-          className={`tab ${activeTab === 'steps' ? 'active' : ''}`}
-          onClick={() => setActiveTab('steps')}
-        >
-          <i className="fas fa-list-ol"></i>
-          User Defined Steps
-        </button>
-        <button 
-          className={`tab ${activeTab === 'agent' ? 'active' : ''}`}
-          onClick={() => setActiveTab('agent')}
-        >
-          <i className="fas fa-robot"></i>
-          Agent View
-        </button>
-        <button 
-          className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('logs')}
-        >
-          <i className="fas fa-terminal"></i>
-          Logs
-        </button>
-      </div>
-      
-      {/* Steps Tab Content */}
-      {activeTab === 'steps' && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">
-              <div className="hierarchy-indicator small">
-                <i className="fas fa-list-ol"></i>
-                <span>STEPS</span>
-              </div>
-              User-defined Steps
-            </h3>
-            <div className="card-actions">
-              <button className="btn btn-ghost btn-sm" onClick={expandAll}>
-                <i className="fas fa-expand-alt"></i>
-                Expand All
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={collapseAll}>
-                <i className="fas fa-compress-alt"></i>
-                Collapse All
-              </button>
-            </div>
-          </div>
-          
-          <div className="steps-list">
-            {execution.stepResults?.map((stepResult) => (
-              <StepItem
-                key={stepResult.stepId}
-                step={{
-                  id: stepResult.stepId,
-                  order: stepResult.stepOrder,
-                  description: stepResult.stepDescription,
-                  status: stepResult.status,
-                  duration: stepResult.duration,
-                  error: stepResult.error
-                }}
-                stepResult={stepResult}
-                isExpanded={expandedSteps[stepResult.stepId]}
-                onToggle={() => toggleStep(stepResult.stepId)}
-                executionId={execution.id}
-                onViewStepDetail={onViewStepDetail}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {/* Agent View Tab Content - Raw Browser Use API Steps */}
-      {activeTab === 'agent' && (
-        <AgentViewTab execution={execution} />
-      )}
-      
-      {/* Logs Tab Content */}
-      {activeTab === 'logs' && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">
-              <i className="fas fa-terminal"></i>
-              Execution Logs
-            </h3>
-          </div>
-          <div className="logs-container">
-            {execution.logs?.map((log, index) => (
-              <div key={index} className={`log-entry ${log.level}`}>
-                <span className="log-timestamp">
-                  {new Date(log.timestamp).toLocaleTimeString()}
-                </span>
-                <span className={`log-level ${log.level}`}>{log.level.toUpperCase()}</span>
-                <span className="log-message">{log.message}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ===== History Page =====
 const HistoryPage = ({ onViewExecution }) => {
   const { executions } = MOCK_DATA;
@@ -1901,7 +1733,7 @@ const HistoryPage = ({ onViewExecution }) => {
                 <tr 
                   key={exec.id} 
                   className="clickable-row"
-                  onClick={() => onViewExecution(exec.id)}
+                  onClick={() => onViewExecution(exec.scenarioId, exec.id)}
                 >
                   <td>
                     <code className="execution-id-cell">{exec.id}</code>
@@ -1926,7 +1758,7 @@ const HistoryPage = ({ onViewExecution }) => {
                       className="btn btn-ghost btn-sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onViewExecution(exec.id);
+                        onViewExecution(exec.scenarioId, exec.id);
                       }}
                     >
                       <i className="fas fa-eye"></i>
@@ -3582,6 +3414,7 @@ const StepDetailPage = ({ executionId, stepId, onBack }) => {
 // ===== Main App Component =====
 const App = () => {
   const [activePage, setActivePage] = useState('dashboard');
+  const [previousPage, setPreviousPage] = useState(null); // Track where user came from
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
   const [selectedStepId, setSelectedStepId] = useState(null);
@@ -3701,6 +3534,7 @@ const App = () => {
   }, [persistData]);
   
   const handleNavigate = (page) => {
+    setPreviousPage(activePage);
     setActivePage(page);
     setSelectedScenarioId(null);
     setSelectedExecutionId(null);
@@ -3708,19 +3542,35 @@ const App = () => {
   };
   
   const handleViewScenario = (scenarioId) => {
+    setPreviousPage(activePage);
     setSelectedScenarioId(scenarioId);
+    setSelectedExecutionId(null); // Reset execution ID to show latest
     setActivePage('scenario-detail');
   };
   
-  const handleViewExecution = (executionId) => {
+  const handleViewExecution = (scenarioId, executionId) => {
+    // Navigate to scenario detail with specific execution
+    setPreviousPage(activePage);
+    setSelectedScenarioId(scenarioId);
     setSelectedExecutionId(executionId);
-    setActivePage('execution-detail');
+    setActivePage('scenario-detail');
   };
   
   const handleViewStepDetail = (executionId, stepId) => {
+    setPreviousPage(activePage);
     setSelectedExecutionId(executionId);
     setSelectedStepId(stepId);
     setActivePage('step-detail');
+  };
+  
+  // Determine where to go back to from scenario-detail
+  const handleBackFromScenarioDetail = () => {
+    // If user came from history, go back to history; otherwise go to scenarios
+    if (previousPage === 'history') {
+      handleNavigate('history');
+    } else {
+      handleNavigate('scenarios');
+    }
   };
   
   const getBreadcrumb = () => {
@@ -3730,11 +3580,13 @@ const App = () => {
       case 'scenarios':
         return ['Home', 'Scenarios'];
       case 'scenario-detail':
+        // Show different breadcrumb based on where user came from
+        if (previousPage === 'history') {
+          return ['Home', 'Run History', 'Execution Details'];
+        }
         return ['Home', 'Scenarios', 'Details'];
-      case 'execution-detail':
-        return ['Home', 'History', 'Execution'];
       case 'step-detail':
-        return ['Home', 'Execution', 'Step Details'];
+        return ['Home', 'Scenario', 'Step Details'];
       case 'history':
         return ['Home', 'Run History'];
       case 'create-scenario':
@@ -3768,16 +3620,8 @@ const App = () => {
         return (
           <ScenarioDetailPage 
             scenarioId={selectedScenarioId}
-            onBack={() => handleNavigate('scenarios')}
-            onViewExecution={handleViewExecution}
-            onViewStepDetail={handleViewStepDetail}
-          />
-        );
-      case 'execution-detail':
-        return (
-          <ExecutionDetailPage 
             executionId={selectedExecutionId}
-            onBack={() => handleNavigate('history')}
+            onBack={handleBackFromScenarioDetail}
             onViewStepDetail={handleViewStepDetail}
           />
         );
@@ -3787,12 +3631,8 @@ const App = () => {
             executionId={selectedExecutionId}
             stepId={selectedStepId}
             onBack={() => {
-              // Go back to the appropriate page
-              if (selectedScenarioId) {
-                setActivePage('scenario-detail');
-              } else {
-                setActivePage('execution-detail');
-              }
+              // Go back to the scenario detail page
+              setActivePage('scenario-detail');
               setSelectedStepId(null);
             }}
           />

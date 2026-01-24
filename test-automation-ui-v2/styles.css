@@ -1217,6 +1217,27 @@ code {
   margin-top: var(--spacing-2);
 }
 
+/* Execution Progress Section in Scenario Details */
+.execution-progress-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4) var(--spacing-5);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(147, 197, 253, 0.08) 100%);
+  border-top: 1px solid var(--border-light);
+}
+
+.execution-progress-section .progress-bar-container {
+  flex: 1;
+  max-width: 400px;
+}
+
+.execution-progress-section .progress-label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .objective-meta {
   display: flex;
   flex-wrap: wrap;
