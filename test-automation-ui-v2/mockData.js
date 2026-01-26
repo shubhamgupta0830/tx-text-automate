@@ -17,8 +17,15 @@
 const STORAGE_KEYS = {
   SCENARIOS: 'trinamix_scenarios',
   EXECUTIONS: 'trinamix_executions',
-  STATS: 'trinamix_stats'
+  STATS: 'trinamix_stats',
+  FOLDERS: 'trinamix_folders',
+  DATA_VERSION: 'trinamix_data_version',
+  FLOW_RUNS: 'trinamix_flow_runs',
+  VARIABLES: 'trinamix_variables'
 };
+
+// Increment this when folder structure changes to force refresh
+const CURRENT_DATA_VERSION = 4;
 
 const StorageHelper = {
   // Save scenarios to localStorage
@@ -81,23 +88,203 @@ const StorageHelper = {
     }
   },
   
+  // Save folders to localStorage
+  saveFolders: (folders) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.FOLDERS, JSON.stringify(folders));
+    } catch (e) {
+      console.error('Error saving folders to localStorage:', e);
+    }
+  },
+  
+  // Load folders from localStorage
+  loadFolders: () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.FOLDERS);
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      console.error('Error loading folders from localStorage:', e);
+      return null;
+    }
+  },
+  
+  // Save flow runs to localStorage
+  saveFlowRuns: (flowRuns) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.FLOW_RUNS, JSON.stringify(flowRuns));
+    } catch (e) {
+      console.error('Error saving flow runs to localStorage:', e);
+    }
+  },
+  
+  // Load flow runs from localStorage
+  loadFlowRuns: () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.FLOW_RUNS);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error('Error loading flow runs from localStorage:', e);
+      return [];
+    }
+  },
+  
+  // Save variables to localStorage
+  saveVariables: (variables) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.VARIABLES, JSON.stringify(variables));
+    } catch (e) {
+      console.error('Error saving variables to localStorage:', e);
+    }
+  },
+  
+  // Load variables from localStorage
+  loadVariables: () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.VARIABLES);
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      console.error('Error loading variables from localStorage:', e);
+      return null;
+    }
+  },
+  
   // Clear all stored data
   clearAll: () => {
     try {
       localStorage.removeItem(STORAGE_KEYS.SCENARIOS);
       localStorage.removeItem(STORAGE_KEYS.EXECUTIONS);
       localStorage.removeItem(STORAGE_KEYS.STATS);
+      localStorage.removeItem(STORAGE_KEYS.FOLDERS);
+      localStorage.removeItem(STORAGE_KEYS.DATA_VERSION);
+      localStorage.removeItem(STORAGE_KEYS.FLOW_RUNS);
+      localStorage.removeItem(STORAGE_KEYS.VARIABLES);
     } catch (e) {
       console.error('Error clearing localStorage:', e);
+    }
+  },
+  
+  // Check and update data version (returns true if version changed)
+  checkDataVersion: () => {
+    try {
+      const storedVersion = localStorage.getItem(STORAGE_KEYS.DATA_VERSION);
+      if (storedVersion !== String(CURRENT_DATA_VERSION)) {
+        // Version changed - clear folders to use new defaults
+        localStorage.removeItem(STORAGE_KEYS.FOLDERS);
+        
+        // Migrate existing scenarios to the default folder (folder-test-scenarios)
+        const storedScenarios = localStorage.getItem(STORAGE_KEYS.SCENARIOS);
+        if (storedScenarios) {
+          const scenarios = JSON.parse(storedScenarios);
+          const validFolderIds = ['folder-test-scenarios', 'folder-oracle', 'folder-erp', 'folder-inventory'];
+          scenarios.forEach(s => {
+            if (!s.folderId || !validFolderIds.includes(s.folderId)) {
+              s.folderId = 'folder-test-scenarios';
+            }
+          });
+          localStorage.setItem(STORAGE_KEYS.SCENARIOS, JSON.stringify(scenarios));
+        }
+        
+        localStorage.setItem(STORAGE_KEYS.DATA_VERSION, String(CURRENT_DATA_VERSION));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Error checking data version:', e);
+      return false;
     }
   }
 };
 
 const MOCK_DATA = {
+  // ===== VARIABLES (Platform Credentials & Configuration) =====
+  // Variables store sensitive configuration like URLs, usernames, passwords for different platforms
+  // These can be referenced in scenarios using \variableName syntax
+  variables: [
+    {
+      id: 'var-oracle-fusion',
+      name: 'Oracle Fusion Cloud',
+      description: 'Oracle Fusion Cloud platform credentials for Supply Chain Planning',
+      category: 'ERP',
+      fields: [
+        { key: 'url', label: 'URL', value: 'https://fusion.oracle.com', type: 'url', isSecret: false },
+        { key: 'username', label: 'Username', value: 'admin@company.com', type: 'text', isSecret: false },
+        { key: 'password', label: 'Password', value: '', type: 'password', isSecret: true }
+      ],
+      createdAt: '2026-01-10T10:00:00Z',
+      updatedAt: '2026-01-20T14:30:00Z'
+    },
+    {
+      id: 'var-oracle-scm',
+      name: 'Oracle Supply Chain',
+      description: 'Oracle Supply Chain Management platform',
+      category: 'SCM',
+      fields: [
+        { key: 'url', label: 'URL', value: 'https://scm.oracle.com', type: 'url', isSecret: false },
+        { key: 'username', label: 'Username', value: 'scm_user@company.com', type: 'text', isSecret: false },
+        { key: 'password', label: 'Password', value: '', type: 'password', isSecret: true },
+        { key: 'tenantId', label: 'Tenant ID', value: 'TENANT001', type: 'text', isSecret: false }
+      ],
+      createdAt: '2026-01-12T09:00:00Z',
+      updatedAt: '2026-01-18T11:00:00Z'
+    },
+    {
+      id: 'var-sap-erp',
+      name: 'SAP ERP',
+      description: 'SAP Enterprise Resource Planning system',
+      category: 'ERP',
+      fields: [
+        { key: 'url', label: 'URL', value: 'https://sap.company.com', type: 'url', isSecret: false },
+        { key: 'client', label: 'Client', value: '100', type: 'text', isSecret: false },
+        { key: 'username', label: 'Username', value: 'sap_user', type: 'text', isSecret: false },
+        { key: 'password', label: 'Password', value: '', type: 'password', isSecret: true }
+      ],
+      createdAt: '2026-01-15T08:00:00Z',
+      updatedAt: '2026-01-15T08:00:00Z'
+    }
+  ],
+
+  // ===== FOLDERS STRUCTURE =====
+  // All folders are at the root level (parentId: null), shown under "All Scenarios"
+  folders: [
+    {
+      id: 'folder-test-scenarios',
+      name: 'Test Scenarios',
+      parentId: null,
+      isExpanded: true,
+      isDefault: true,
+      createdAt: '2026-01-01T00:00:00Z'
+    },
+    {
+      id: 'folder-oracle',
+      name: 'Oracle Cloud HCM',
+      parentId: null,
+      isExpanded: true,
+      isDefault: false,
+      createdAt: '2026-01-15T10:00:00Z'
+    },
+    {
+      id: 'folder-erp',
+      name: 'Oracle ERP',
+      parentId: null,
+      isExpanded: false,
+      isDefault: false,
+      createdAt: '2026-01-16T10:00:00Z'
+    },
+    {
+      id: 'folder-inventory',
+      name: 'Inventory Management',
+      parentId: 'folder-erp',
+      isExpanded: false,
+      isDefault: false,
+      createdAt: '2026-01-17T10:00:00Z'
+    }
+  ],
+  
   // ===== SCENARIOS (Objectives) =====
   scenarios: [
     {
       id: 'scenario-001',
+      folderId: 'folder-test-scenarios',
       objective: 'Verify that Supply Plans are correctly configured and can be opened',
       description: 'End-to-end validation of Oracle Fusion Cloud Supply Planning module configuration',
       tags: ['oracle', 'supply-chain', 'critical'],
@@ -189,6 +376,7 @@ const MOCK_DATA = {
     },
     {
       id: 'scenario-002',
+      folderId: 'folder-test-scenarios',
       objective: 'Create and validate a new Purchase Order in Oracle ERP',
       description: 'Test the complete purchase order creation workflow including approvals',
       tags: ['oracle', 'procurement', 'erp'],

@@ -54,6 +54,13 @@ const Sidebar = ({ activePage, onNavigate }) => {
             <i className="fas fa-plus-circle"></i>
             New Scenario
           </a>
+          <a 
+            className={`nav-item ${activePage === 'flow-builder' ? 'active' : ''}`}
+            onClick={() => onNavigate('flow-builder')}
+          >
+            <i className="fas fa-project-diagram"></i>
+            Flow Builder
+          </a>
           <a className="nav-item">
             <i className="fas fa-calendar"></i>
             Schedules
@@ -62,6 +69,13 @@ const Sidebar = ({ activePage, onNavigate }) => {
         
         <div className="nav-section">
           <div className="nav-section-title">Settings</div>
+          <a 
+            className={`nav-item ${activePage === 'variables' ? 'active' : ''}`}
+            onClick={() => onNavigate('variables')}
+          >
+            <i className="fas fa-key"></i>
+            Variables
+          </a>
           <a className="nav-item">
             <i className="fas fa-cog"></i>
             Configuration
@@ -89,8 +103,162 @@ const Sidebar = ({ activePage, onNavigate }) => {
   );
 };
 
+// ===== Variable Selector Component =====
+// Provides autocomplete dropdown for inserting variables into text inputs
+const VariableSelector = ({ 
+  variables, 
+  isOpen, 
+  onClose, 
+  onSelect, 
+  searchTerm,
+  position 
+}) => {
+  const [filteredVariables, setFilteredVariables] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const dropdownRef = React.useRef(null);
+  
+  // Filter variables based on search term
+  useEffect(() => {
+    if (!variables) {
+      setFilteredVariables([]);
+      return;
+    }
+    
+    const term = searchTerm?.toLowerCase() || '';
+    const filtered = variables.filter(v => 
+      v.name.toLowerCase().includes(term) ||
+      v.category?.toLowerCase().includes(term) ||
+      v.description?.toLowerCase().includes(term)
+    );
+    setFilteredVariables(filtered);
+    setSelectedIndex(0);
+  }, [variables, searchTerm]);
+  
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, filteredVariables.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter' && filteredVariables.length > 0) {
+        e.preventDefault();
+        onSelect(filteredVariables[selectedIndex]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, filteredVariables, selectedIndex, onSelect, onClose]);
+  
+  // Scroll selected item into view
+  useEffect(() => {
+    if (dropdownRef.current && filteredVariables.length > 0) {
+      const selectedItem = dropdownRef.current.querySelector('.variable-option.selected');
+      if (selectedItem) {
+        selectedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [selectedIndex]);
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div 
+      className="variable-selector-dropdown"
+      ref={dropdownRef}
+      style={position ? { top: position.top, left: position.left } : {}}
+    >
+      <div className="variable-selector-header">
+        <i className="fas fa-key"></i>
+        <span>Insert Variable</span>
+        {searchTerm && <span className="search-term">"{searchTerm}"</span>}
+      </div>
+      
+      {filteredVariables.length === 0 ? (
+        <div className="variable-selector-empty">
+          <i className="fas fa-search"></i>
+          <span>No variables found</span>
+        </div>
+      ) : (
+        <div className="variable-selector-list">
+          {filteredVariables.map((variable, index) => (
+            <div
+              key={variable.id}
+              className={`variable-option ${index === selectedIndex ? 'selected' : ''}`}
+              onClick={() => onSelect(variable)}
+              onMouseEnter={() => setSelectedIndex(index)}
+            >
+              <div className="variable-option-icon">
+                <i className="fas fa-cube"></i>
+              </div>
+              <div className="variable-option-content">
+                <span className="variable-option-name">{variable.name}</span>
+                {variable.category && (
+                  <span className="variable-option-category">{variable.category}</span>
+                )}
+                <span className="variable-option-fields">
+                  {variable.fields?.map(f => f.label).join(', ')}
+                </span>
+              </div>
+              <div className="variable-option-hint">
+                <code>\{variable.name.replace(/\s+/g, '_')}</code>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      <div className="variable-selector-footer">
+        <span><kbd>↑↓</kbd> Navigate</span>
+        <span><kbd>Enter</kbd> Select</span>
+        <span><kbd>Esc</kbd> Close</span>
+      </div>
+    </div>
+  );
+};
+
+// ===== Variable Tag Component =====
+// Displays an inserted variable as a styled tag in preview
+const VariableTag = ({ variableName, variable, onClick }) => {
+  return (
+    <span 
+      className={`variable-tag ${variable ? '' : 'invalid'}`}
+      onClick={onClick}
+      title={variable ? `${variable.name}: ${variable.fields?.map(f => f.label).join(', ')}` : 'Variable not found'}
+    >
+      <i className="fas fa-key"></i>
+      <span>{variableName}</span>
+      {!variable && <i className="fas fa-exclamation-triangle"></i>}
+    </span>
+  );
+};
+
 // ===== Header Component =====
-const Header = ({ breadcrumb }) => {
+const Header = ({ breadcrumb, searchQuery, onSearchChange, searchResults, onSelectSearchResult, onClearSearch }) => {
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchRef = React.useRef(null);
+  
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  const showResults = isSearchFocused && searchQuery && searchQuery.length > 0;
+  
   return (
     <header className="header">
       <div className="header-left">
@@ -109,9 +277,116 @@ const Header = ({ breadcrumb }) => {
       </div>
       
       <div className="header-right">
-        <div className="search-bar">
-          <i className="fas fa-search" style={{color: 'var(--text-tertiary)'}}></i>
-          <input type="text" placeholder="Search scenarios, executions..." />
+        <div className="search-bar-container" ref={searchRef}>
+          <div className="search-bar">
+            <i className="fas fa-search" style={{color: 'var(--text-tertiary)'}}></i>
+            <input 
+              type="text" 
+              placeholder="Search scenarios, executions..." 
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+            />
+            {searchQuery && (
+              <button 
+                className="search-clear-btn"
+                onClick={() => {
+                  onClearSearch();
+                  setIsSearchFocused(false);
+                }}
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            )}
+          </div>
+          
+          {/* Search Results Dropdown */}
+          {showResults && (
+            <div className="search-results-dropdown">
+              {searchResults.scenarios.length === 0 && searchResults.executions.length === 0 ? (
+                <div className="search-no-results">
+                  <i className="fas fa-search"></i>
+                  <span>No results found for "{searchQuery}"</span>
+                </div>
+              ) : (
+                <>
+                  {searchResults.scenarios.length > 0 && (
+                    <div className="search-results-section">
+                      <div className="search-results-section-title">
+                        <i className="fas fa-bullseye"></i>
+                        Scenarios ({searchResults.scenarios.length})
+                      </div>
+                      {searchResults.scenarios.slice(0, 5).map(scenario => (
+                        <div 
+                          key={scenario.id} 
+                          className="search-result-item"
+                          onClick={() => {
+                            onSelectSearchResult('scenario', scenario.id);
+                            setIsSearchFocused(false);
+                          }}
+                        >
+                          <div className="search-result-icon">
+                            <i className="fas fa-bullseye"></i>
+                          </div>
+                          <div className="search-result-content">
+                            <div className="search-result-title">{scenario.name || scenario.objective}</div>
+                            <div className="search-result-subtitle">
+                              {scenario.steps?.length || 0} steps
+                            </div>
+                          </div>
+                          <span className={`status-badge status-${scenario.status}`}>
+                            {scenario.status}
+                          </span>
+                        </div>
+                      ))}
+                      {searchResults.scenarios.length > 5 && (
+                        <div className="search-results-more">
+                          +{searchResults.scenarios.length - 5} more scenarios
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {searchResults.executions.length > 0 && (
+                    <div className="search-results-section">
+                      <div className="search-results-section-title">
+                        <i className="fas fa-play-circle"></i>
+                        Executions ({searchResults.executions.length})
+                      </div>
+                      {searchResults.executions.slice(0, 5).map(execution => (
+                        <div 
+                          key={execution.id} 
+                          className="search-result-item"
+                          onClick={() => {
+                            onSelectSearchResult('execution', execution.scenarioId, execution.id);
+                            setIsSearchFocused(false);
+                          }}
+                        >
+                          <div className="search-result-icon">
+                            <i className="fas fa-play-circle"></i>
+                          </div>
+                          <div className="search-result-content">
+                            <div className="search-result-title">{execution.scenarioName}</div>
+                            <div className="search-result-subtitle">
+                              {Utils.formatRelativeTime(execution.startTime)}
+                            </div>
+                          </div>
+                          <span className={`status-badge status-${execution.status}`}>
+                            {execution.status}
+                          </span>
+                        </div>
+                      ))}
+                      {searchResults.executions.length > 5 && (
+                        <div className="search-results-more">
+                          +{searchResults.executions.length - 5} more executions
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
         
         <button className="icon-button">
@@ -161,10 +436,12 @@ const ProgressBar = ({ percentage, status }) => {
   const statusClass = Utils.getStatusClass(status);
   return (
     <div className="progress-bar-container">
-      <div 
-        className={`progress-bar-fill ${statusClass}`} 
-        style={{ width: `${percentage}%` }}
-      ></div>
+      <div className="progress-bar-track">
+        <div 
+          className={`progress-bar-fill ${statusClass}`} 
+          style={{ width: `${percentage}%` }}
+        ></div>
+      </div>
       <span className="progress-bar-text">{percentage}%</span>
     </div>
   );
@@ -646,8 +923,26 @@ const ScenarioCard = ({ scenario, onClick, onDelete }) => {
 };
 
 // ===== Dashboard Page =====
-const Dashboard = ({ onNavigate, onViewScenario, onViewExecution }) => {
+const Dashboard = ({ onNavigate, onViewScenario, onViewExecution, savedFlows = [], flowRuns = [], onViewFlowRun }) => {
   const { stats, scenarios, executions, recentActivity } = MOCK_DATA;
+  
+  // Get the 5 most recent flow runs
+  const recentFlowRuns = useMemo(() => {
+    return [...flowRuns]
+      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+      .slice(0, 5);
+  }, [flowRuns]);
+  
+  // Get flow status badge color
+  const getFlowStatusColor = (status) => {
+    switch (status) {
+      case 'completed': return 'green';
+      case 'failed': return 'red';
+      case 'running': return 'orange';
+      case 'cancelled': return 'gray';
+      default: return 'blue';
+    }
+  };
   
   return (
     <div className="page-content">
@@ -677,10 +972,10 @@ const Dashboard = ({ onNavigate, onViewScenario, onViewExecution }) => {
           value={stats.failedScenarios}
         />
         <StatCard 
-          icon="fa-spinner" 
-          iconColor="orange" 
-          label="Running" 
-          value={stats.runningScenarios}
+          icon="fa-project-diagram" 
+          iconColor="purple" 
+          label="Saved Flows" 
+          value={savedFlows.length}
         />
       </div>
       
@@ -698,155 +993,582 @@ const Dashboard = ({ onNavigate, onViewScenario, onViewExecution }) => {
           </div>
           <span className="quick-action-label">Run Scenario</span>
         </div>
-        <div className="quick-action" onClick={() => onNavigate('history')}>
+        <div className="quick-action" onClick={() => onNavigate('flow-builder')}>
           <div className="quick-action-icon purple">
+            <i className="fas fa-project-diagram"></i>
+          </div>
+          <span className="quick-action-label">Flow Builder</span>
+        </div>
+        <div className="quick-action" onClick={() => onNavigate('history')}>
+          <div className="quick-action-icon orange">
             <i className="fas fa-history"></i>
           </div>
           <span className="quick-action-label">View History</span>
         </div>
       </div>
       
-      {/* Scenarios Grid */}
-      <div className="card mb-4">
-        <div className="card-header">
-          <h3 className="card-title">
-            <i className="fas fa-bullseye"></i>
-            Scenarios (Objectives)
-          </h3>
-          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('scenarios')}>
-            View All
-          </button>
+      {/* Two Column Layout for Flows */}
+      <div className="dashboard-two-column mb-4">
+        {/* Saved Flows */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">
+              <i className="fas fa-project-diagram"></i>
+              Saved Flows
+            </h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('flow-builder')}>
+              Open Builder
+            </button>
+          </div>
+          <div className="flow-list">
+            {savedFlows.length === 0 ? (
+              <div className="empty-state-small">
+                <i className="fas fa-project-diagram"></i>
+                <p>No flows created yet</p>
+                <button className="btn btn-primary btn-sm" onClick={() => onNavigate('flow-builder')}>
+                  Create Flow
+                </button>
+              </div>
+            ) : (
+              savedFlows.slice(0, 5).map(flow => {
+                // Calculate node count from flow data if not already stored
+                const nodeCount = flow.nodeCount ?? (flow.data?.drawflow?.Home?.data 
+                  ? Object.keys(flow.data.drawflow.Home.data).length 
+                  : 0);
+                return (
+                <div 
+                  key={flow.id} 
+                  className="flow-list-item clickable"
+                  onClick={() => onNavigate('flow-builder')}
+                >
+                  <div className="flow-list-item-icon">
+                    <i className="fas fa-sitemap"></i>
+                  </div>
+                  <div className="flow-list-item-content">
+                    <div className="flow-list-item-name">{flow.name}</div>
+                    <div className="flow-list-item-meta">
+                      <span><i className="fas fa-cube"></i> {nodeCount} nodes</span>
+                      <span><i className="fas fa-clock"></i> {Utils.formatRelativeTime(flow.updatedAt || flow.createdAt)}</span>
+                    </div>
+                  </div>
+                  <i className="fas fa-chevron-right flow-list-item-arrow"></i>
+                </div>
+              );})
+            )}
+            {savedFlows.length > 5 && (
+              <div className="flow-list-more" onClick={() => onNavigate('flow-builder')}>
+                <span>View all {savedFlows.length} flows</span>
+                <i className="fas fa-arrow-right"></i>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="scenarios-grid">
-          {scenarios.map(scenario => (
-            <ScenarioCard 
-              key={scenario.id} 
-              scenario={scenario} 
-              onClick={onViewScenario}
-            />
-          ))}
+        
+        {/* Recent Flow Runs */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">
+              <i className="fas fa-play-circle"></i>
+              Recent Flow Runs
+            </h3>
+          </div>
+          <div className="flow-list">
+            {recentFlowRuns.length === 0 ? (
+              <div className="empty-state-small">
+                <i className="fas fa-play-circle"></i>
+                <p>No flow runs yet</p>
+                <span className="text-muted">Run a flow to see history here</span>
+              </div>
+            ) : (
+              recentFlowRuns.map(run => (
+                <div 
+                  key={run.id} 
+                  className="flow-list-item clickable"
+                  onClick={() => onViewFlowRun && onViewFlowRun(run.id)}
+                >
+                  <div className={`flow-list-item-icon status-${run.status}`}>
+                    <i className={`fas ${run.status === 'completed' ? 'fa-check' : run.status === 'failed' ? 'fa-times' : run.status === 'running' ? 'fa-spinner fa-spin' : 'fa-ban'}`}></i>
+                  </div>
+                  <div className="flow-list-item-content">
+                    <div className="flow-list-item-name">{run.flowName}</div>
+                    <div className="flow-list-item-meta">
+                      <span className={`status-text ${run.status}`}>
+                        {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
+                      </span>
+                      <span><i className="fas fa-clock"></i> {Utils.formatRelativeTime(run.startTime)}</span>
+                    </div>
+                  </div>
+                  <i className="fas fa-chevron-right flow-list-item-arrow"></i>
+                </div>
+              ))
+            )}
+            {flowRuns.length > 5 && (
+              <div className="flow-list-more" onClick={() => onNavigate('flow-builder')}>
+                <span>View all {flowRuns.length} runs</span>
+                <i className="fas fa-arrow-right"></i>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
-      {/* Recent Executions */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">
-            <i className="fas fa-history"></i>
-            Recent Executions
-          </h3>
+      {/* Two Column Layout for Scenarios */}
+      <div className="dashboard-two-column mb-4">
+        {/* Saved Scenarios */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">
+              <i className="fas fa-bullseye"></i>
+              Saved Scenarios
+            </h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('scenarios')}>
+              View All
+            </button>
+          </div>
+          <div className="flow-list">
+            {scenarios.length === 0 ? (
+              <div className="empty-state-small">
+                <i className="fas fa-bullseye"></i>
+                <p>No scenarios created yet</p>
+                <button className="btn btn-primary btn-sm" onClick={() => onNavigate('create-scenario')}>
+                  Create Scenario
+                </button>
+              </div>
+            ) : (
+              scenarios.slice(0, 5).map(scenario => (
+                <div 
+                  key={scenario.id} 
+                  className="flow-list-item clickable"
+                  onClick={() => onViewScenario(scenario.id)}
+                >
+                  <div className={`flow-list-item-icon status-${scenario.status || 'pending'}`}>
+                    <i className={`fas ${scenario.status === 'passed' ? 'fa-check' : scenario.status === 'failed' ? 'fa-times' : scenario.status === 'running' ? 'fa-spinner fa-spin' : 'fa-bullseye'}`}></i>
+                  </div>
+                  <div className="flow-list-item-content">
+                    <div className="flow-list-item-name">{scenario.name || scenario.objective}</div>
+                    <div className="flow-list-item-meta">
+                      <span><i className="fas fa-list-ol"></i> {scenario.steps?.length || 0} steps</span>
+                      <span><i className="fas fa-clock"></i> {Utils.formatRelativeTime(scenario.lastRun?.startTime || scenario.createdAt)}</span>
+                    </div>
+                  </div>
+                  <i className="fas fa-chevron-right flow-list-item-arrow"></i>
+                </div>
+              ))
+            )}
+            {scenarios.length > 5 && (
+              <div className="flow-list-more" onClick={() => onNavigate('scenarios')}>
+                <span>View all {scenarios.length} scenarios</span>
+                <i className="fas fa-arrow-right"></i>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Scenario Objective</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Duration</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {executions.map(exec => (
-                <tr 
+        
+        {/* Recent Scenario Runs */}
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">
+              <i className="fas fa-history"></i>
+              Recent Scenario Runs
+            </h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('history')}>
+              View All
+            </button>
+          </div>
+          <div className="flow-list">
+            {executions.length === 0 ? (
+              <div className="empty-state-small">
+                <i className="fas fa-history"></i>
+                <p>No scenario runs yet</p>
+                <span className="text-muted">Run a scenario to see history here</span>
+              </div>
+            ) : (
+              executions.slice(0, 5).map(exec => (
+                <div 
                   key={exec.id} 
-                  className="clickable-row"
+                  className="flow-list-item clickable"
                   onClick={() => onViewExecution(exec.scenarioId, exec.id)}
                 >
-                  <td>
-                    <div className="objective-cell">
-                      <i className="fas fa-bullseye"></i>
-                      {Utils.truncateText(exec.scenarioObjective, 60)}
+                  <div className={`flow-list-item-icon status-${exec.status === 'passed' ? 'completed' : exec.status}`}>
+                    <i className={`fas ${exec.status === 'passed' || exec.status === 'completed' ? 'fa-check' : exec.status === 'failed' ? 'fa-times' : exec.status === 'running' ? 'fa-spinner fa-spin' : 'fa-clock'}`}></i>
+                  </div>
+                  <div className="flow-list-item-content">
+                    <div className="flow-list-item-name">{Utils.truncateText(exec.scenarioObjective || exec.scenarioName, 40)}</div>
+                    <div className="flow-list-item-meta">
+                      <span className={`status-text ${exec.status === 'passed' ? 'completed' : exec.status}`}>
+                        {exec.status.charAt(0).toUpperCase() + exec.status.slice(1)}
+                      </span>
+                      <span><i className="fas fa-clock"></i> {Utils.formatRelativeTime(exec.startTime)}</span>
                     </div>
-                  </td>
-                  <td><StatusBadge status={exec.status} /></td>
-                  <td>
-                    <ProgressBar 
-                      percentage={exec.progress.percentage} 
-                      status={exec.status}
-                    />
-                  </td>
-                  <td>{Utils.formatDuration(exec.duration)}</td>
-                  <td>{Utils.formatRelativeTime(exec.startTime)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <i className="fas fa-chevron-right flow-list-item-arrow"></i>
+                </div>
+              ))
+            )}
+            {executions.length > 5 && (
+              <div className="flow-list-more" onClick={() => onNavigate('history')}>
+                <span>View all {executions.length} runs</span>
+                <i className="fas fa-arrow-right"></i>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// ===== Folder Tree Item Component =====
+const FolderTreeItem = ({ folder, folders, scenarios, level = 0, selectedFolderId, onSelectFolder, onCreateFolder, onRenameFolder, onDeleteFolder, expandedFolders, onToggleExpand }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(folder.name);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const contextMenuRef = React.useRef(null);
+  
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+        setShowContextMenu(false);
+      }
+    };
+    
+    if (showContextMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showContextMenu]);
+  
+  const childFolders = folders.filter(f => f.parentId === folder.id);
+  const isExpanded = expandedFolders[folder.id] !== false; // Default to expanded
+  const hasChildren = childFolders.length > 0;
+  
+  // Count scenarios in this folder and all subfolders
+  const countScenariosInFolder = (folderId) => {
+    let count = scenarios.filter(s => s.folderId === folderId).length;
+    const children = folders.filter(f => f.parentId === folderId);
+    children.forEach(child => {
+      count += countScenariosInFolder(child.id);
+    });
+    return count;
+  };
+  
+  const scenarioCount = countScenariosInFolder(folder.id);
+  
+  const handleRename = () => {
+    if (editName.trim() && editName !== folder.name) {
+      onRenameFolder(folder.id, editName.trim());
+    }
+    setIsEditing(false);
+    setShowContextMenu(false);
+  };
+  
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handleRename();
+    } else if (e.key === 'Escape') {
+      setEditName(folder.name);
+      setIsEditing(false);
+    }
+  };
+  
+  return (
+    <div className="folder-tree-item">
+      <div 
+        className={`folder-row ${selectedFolderId === folder.id ? 'selected' : ''}`}
+        style={{ paddingLeft: `${level * 20 + 8}px` }}
+        onClick={() => onSelectFolder(folder.id)}
+      >
+        <span 
+          className={`folder-expand-icon ${hasChildren ? '' : 'invisible'}`}
+          onClick={(e) => { e.stopPropagation(); onToggleExpand(folder.id); }}
+        >
+          <i className={`fas fa-chevron-${isExpanded ? 'down' : 'right'}`}></i>
+        </span>
+        <i className={`fas fa-folder${isExpanded && hasChildren ? '-open' : ''} folder-icon`}></i>
+        {isEditing ? (
+          <input
+            type="text"
+            className="folder-name-input"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={handleKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            autoFocus
+          />
+        ) : (
+          <span className="folder-name">{folder.name}</span>
+        )}
+        <span className="folder-count">{scenarioCount}</span>
+        <div className="folder-actions">
+          <button 
+            className="folder-action-btn"
+            onClick={(e) => { e.stopPropagation(); setShowContextMenu(!showContextMenu); }}
+            title="More options"
+          >
+            <i className="fas fa-ellipsis-v"></i>
+          </button>
+        </div>
+        {showContextMenu && (
+          <div className="folder-context-menu" ref={contextMenuRef} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => { onCreateFolder(folder.id); setShowContextMenu(false); }}>
+              <i className="fas fa-folder-plus"></i> New Subfolder
+            </button>
+            {!folder.isDefault && (
+              <>
+                <button onClick={() => { setIsEditing(true); setShowContextMenu(false); }}>
+                  <i className="fas fa-edit"></i> Rename
+                </button>
+                <button className="danger" onClick={() => { onDeleteFolder(folder.id); setShowContextMenu(false); }}>
+                  <i className="fas fa-trash"></i> Delete
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {isExpanded && hasChildren && (
+        <div className="folder-children">
+          {childFolders.map(childFolder => (
+            <FolderTreeItem
+              key={childFolder.id}
+              folder={childFolder}
+              folders={folders}
+              scenarios={scenarios}
+              level={level + 1}
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={onSelectFolder}
+              onCreateFolder={onCreateFolder}
+              onRenameFolder={onRenameFolder}
+              onDeleteFolder={onDeleteFolder}
+              expandedFolders={expandedFolders}
+              onToggleExpand={onToggleExpand}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
 // ===== Scenarios List Page =====
 const ScenariosPage = ({ onViewScenario, onNavigate, onDeleteScenario }) => {
-  const { scenarios } = MOCK_DATA;
+  const { scenarios, folders } = MOCK_DATA;
   const [filter, setFilter] = useState('all');
+  const [selectedFolderId, setSelectedFolderId] = useState(null); // null means show all
+  const [expandedFolders, setExpandedFolders] = useState({});
+  const [, forceUpdate] = useState(0);
+  
+  // Get root folders (folders without parent)
+  const rootFolders = folders.filter(f => f.parentId === null);
+  
+  // Get all descendant folder IDs for a given folder
+  const getDescendantFolderIds = (folderId) => {
+    const descendants = [folderId];
+    const children = folders.filter(f => f.parentId === folderId);
+    children.forEach(child => {
+      descendants.push(...getDescendantFolderIds(child.id));
+    });
+    return descendants;
+  };
+  
+  // Scenarios filtered by folder only (for filter counts)
+  const folderFilteredScenarios = useMemo(() => {
+    if (!selectedFolderId) return scenarios;
+    const folderIds = getDescendantFolderIds(selectedFolderId);
+    return scenarios.filter(s => folderIds.includes(s.folderId));
+  }, [scenarios, selectedFolderId, folders]);
   
   const filteredScenarios = useMemo(() => {
-    if (filter === 'all') return scenarios;
-    return scenarios.filter(s => s.status === filter);
-  }, [scenarios, filter]);
+    let result = folderFilteredScenarios;
+    
+    // Filter by status
+    if (filter !== 'all') {
+      result = result.filter(s => s.status === filter);
+    }
+    
+    return result;
+  }, [folderFilteredScenarios, filter]);
+  
+  const handleToggleExpand = (folderId) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderId]: !prev[folderId]
+    }));
+  };
+  
+  const handleCreateFolder = (parentId) => {
+    const newFolder = {
+      id: `folder-${Date.now()}`,
+      name: 'New Folder',
+      parentId: parentId,
+      isExpanded: false,
+      isDefault: false,
+      createdAt: new Date().toISOString()
+    };
+    MOCK_DATA.folders.push(newFolder);
+    StorageHelper.saveFolders(MOCK_DATA.folders);
+    // Expand parent folder
+    setExpandedFolders(prev => ({ ...prev, [parentId]: true }));
+    forceUpdate(n => n + 1);
+  };
+  
+  const handleRenameFolder = (folderId, newName) => {
+    const folderIndex = MOCK_DATA.folders.findIndex(f => f.id === folderId);
+    if (folderIndex >= 0) {
+      MOCK_DATA.folders[folderIndex].name = newName;
+      StorageHelper.saveFolders(MOCK_DATA.folders);
+      forceUpdate(n => n + 1);
+    }
+  };
+  
+  const handleDeleteFolder = (folderId) => {
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder || folder.isDefault) return;
+    
+    // Get all descendant folders
+    const descendantIds = getDescendantFolderIds(folderId);
+    
+    // Move all scenarios in this folder and subfolders to root
+    const rootFolder = folders.find(f => f.isDefault);
+    MOCK_DATA.scenarios.forEach(s => {
+      if (descendantIds.includes(s.folderId)) {
+        s.folderId = rootFolder?.id || null;
+      }
+    });
+    
+    // Remove the folder and all descendants
+    MOCK_DATA.folders = MOCK_DATA.folders.filter(f => !descendantIds.includes(f.id));
+    
+    StorageHelper.saveFolders(MOCK_DATA.folders);
+    StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+    
+    if (selectedFolderId === folderId) {
+      setSelectedFolderId(null);
+    }
+    forceUpdate(n => n + 1);
+  };
+  
+  const getSelectedFolderName = () => {
+    if (!selectedFolderId) return 'All Scenarios';
+    const folder = folders.find(f => f.id === selectedFolderId);
+    return folder ? folder.name : 'All Scenarios';
+  };
   
   return (
-    <div className="page-content">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Scenarios</h1>
-          <p className="page-subtitle">All test automation objectives</p>
+    <div className="page-content scenarios-page-with-folders">
+      {/* Folder Tree Panel */}
+      <div className="folder-tree-panel">
+        <div className="folder-tree-header">
+          <h3>Folders</h3>
+          <button 
+            className="btn-icon" 
+            onClick={() => handleCreateFolder(null)}
+            title="Create new folder"
+          >
+            <i className="fas fa-folder-plus"></i>
+          </button>
         </div>
-        <button className="btn btn-primary" onClick={() => onNavigate('create-scenario')}>
-          <i className="fas fa-plus"></i>
-          New Scenario
-        </button>
+        <div className="folder-tree">
+          <div 
+            className={`folder-row all-scenarios ${selectedFolderId === null ? 'selected' : ''}`}
+            onClick={() => setSelectedFolderId(null)}
+          >
+            <i className="fas fa-layer-group folder-icon"></i>
+            <span className="folder-name">All Scenarios</span>
+            <span className="folder-count">{scenarios.length}</span>
+          </div>
+          {rootFolders.map(folder => (
+            <FolderTreeItem
+              key={folder.id}
+              folder={folder}
+              folders={folders}
+              scenarios={scenarios}
+              level={0}
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={setSelectedFolderId}
+              onCreateFolder={handleCreateFolder}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
+              expandedFolders={expandedFolders}
+              onToggleExpand={handleToggleExpand}
+            />
+          ))}
+        </div>
       </div>
       
-      {/* Filters */}
-      <div className="filters-bar mb-4">
-        <button 
-          className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          All ({scenarios.length})
-        </button>
-        <button 
-          className={`filter-btn success ${filter === 'passed' ? 'active' : ''}`}
-          onClick={() => setFilter('passed')}
-        >
-          Passed ({scenarios.filter(s => s.status === 'passed').length})
-        </button>
-        <button 
-          className={`filter-btn error ${filter === 'failed' ? 'active' : ''}`}
-          onClick={() => setFilter('failed')}
-        >
-          Failed ({scenarios.filter(s => s.status === 'failed').length})
-        </button>
-        <button 
-          className={`filter-btn info ${filter === 'running' ? 'active' : ''}`}
-          onClick={() => setFilter('running')}
-        >
-          Running ({scenarios.filter(s => s.status === 'running').length})
-        </button>
-      </div>
-      
-      {/* Scenarios Grid */}
-      <div className="scenarios-grid">
-        {filteredScenarios.map(scenario => (
-          <ScenarioCard 
-            key={scenario.id} 
-            scenario={scenario} 
-            onClick={onViewScenario}
-            onDelete={onDeleteScenario}
-          />
-        ))}
+      {/* Scenarios Content */}
+      <div className="scenarios-content">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">{getSelectedFolderName()}</h1>
+            <p className="page-subtitle">{folderFilteredScenarios.length} scenario{folderFilteredScenarios.length !== 1 ? 's' : ''}</p>
+          </div>
+          <button className="btn btn-primary" onClick={() => onNavigate('create-scenario', { folderId: selectedFolderId })}>
+            <i className="fas fa-plus"></i>
+            New Scenario
+          </button>
+        </div>
+        
+        {/* Filters */}
+        <div className="filters-bar mb-4">
+          <button 
+            className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            All ({folderFilteredScenarios.length})
+          </button>
+          <button 
+            className={`filter-btn success ${filter === 'passed' ? 'active' : ''}`}
+            onClick={() => setFilter('passed')}
+          >
+            Passed ({folderFilteredScenarios.filter(s => s.status === 'passed').length})
+          </button>
+          <button 
+            className={`filter-btn error ${filter === 'failed' ? 'active' : ''}`}
+            onClick={() => setFilter('failed')}
+          >
+            Failed ({folderFilteredScenarios.filter(s => s.status === 'failed').length})
+          </button>
+          <button 
+            className={`filter-btn info ${filter === 'running' ? 'active' : ''}`}
+            onClick={() => setFilter('running')}
+          >
+            Running ({folderFilteredScenarios.filter(s => s.status === 'running').length})
+          </button>
+        </div>
+        
+        {/* Scenarios Grid */}
+        <div className="scenarios-grid">
+          {filteredScenarios.length > 0 ? (
+            filteredScenarios.map(scenario => (
+              <ScenarioCard 
+                key={scenario.id} 
+                scenario={scenario} 
+                onClick={onViewScenario}
+                onDelete={onDeleteScenario}
+              />
+            ))
+          ) : (
+            <div className="empty-state-inline">
+              <i className="fas fa-folder-open"></i>
+              <p>No scenarios in this folder</p>
+              <button className="btn btn-primary btn-sm" onClick={() => onNavigate('create-scenario', { folderId: selectedFolderId })}>
+                Create Scenario
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
 // ===== Scenario Detail Page =====
-const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail }) => {
+const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail, onEditScenario, onViewFlowRun }) => {
   const scenario = MOCK_DATA.scenarios.find(s => s.id === scenarioId);
   // Find execution by executionId if provided, otherwise find by scenarioId
   const execution = executionId 
@@ -1216,14 +1938,30 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail 
             </div>
           ) : (
             <>
-              <button className="btn btn-secondary">
-                <i className="fas fa-edit"></i>
-                Edit
-              </button>
-              <button className="btn btn-primary" onClick={handleRunScenario}>
-                <i className="fas fa-play"></i>
-                Run Now
-              </button>
+              {/* Only show Edit button if scenario has NOT been run */}
+              {!scenario.lastRun ? (
+                <button className="btn btn-secondary" onClick={() => onEditScenario && onEditScenario(scenario)}>
+                  <i className="fas fa-edit"></i>
+                  Edit
+                </button>
+              ) : (
+                <button className="btn btn-secondary" disabled title="Cannot edit a scenario that has been run">
+                  <i className="fas fa-edit"></i>
+                  Edit
+                </button>
+              )}
+              {/* Only show Run Now button if scenario has NOT been run */}
+              {!scenario.lastRun ? (
+                <button className="btn btn-primary" onClick={handleRunScenario}>
+                  <i className="fas fa-play"></i>
+                  Run Now
+                </button>
+              ) : (
+                <button className="btn btn-primary" disabled title="Scenario has already been run">
+                  <i className="fas fa-play"></i>
+                  Run Now
+                </button>
+              )}
             </>
           )}
         </div>
@@ -1290,7 +2028,19 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail 
                 <i className="fas fa-stopwatch"></i>
                 <span>Duration: {Utils.formatDuration(execution.duration)}</span>
               </div>
-              {execution.metadata?.triggeredBy && (
+              {execution.flowRunId && (
+                <div className="meta-item flow-run-link">
+                  <button 
+                    className="flow-link-btn"
+                    onClick={() => onViewFlowRun && onViewFlowRun(execution.flowRunId)}
+                    title="View flow run"
+                  >
+                    <i className="fas fa-project-diagram"></i>
+                    <span>Part of Flow Run</span>
+                  </button>
+                </div>
+              )}
+              {execution.metadata?.triggeredBy && !execution.flowRunId && (
                 <div className="meta-item">
                   <i className="fas fa-user"></i>
                   <span>{execution.metadata.triggeredBy}</span>
@@ -1704,7 +2454,7 @@ const AgentViewTab = ({ execution }) => {
 };
 
 // ===== History Page =====
-const HistoryPage = ({ onViewExecution }) => {
+const HistoryPage = ({ onViewExecution, onViewFlowRun }) => {
   const { executions } = MOCK_DATA;
   
   return (
@@ -1725,6 +2475,7 @@ const HistoryPage = ({ onViewExecution }) => {
                 <th>Progress</th>
                 <th>Duration</th>
                 <th>Started</th>
+                <th>Source</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1754,6 +2505,26 @@ const HistoryPage = ({ onViewExecution }) => {
                   <td>{Utils.formatDuration(exec.duration)}</td>
                   <td>{Utils.formatRelativeTime(exec.startTime)}</td>
                   <td>
+                    {exec.flowRunId ? (
+                      <button 
+                        className="flow-link-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewFlowRun && onViewFlowRun(exec.flowRunId);
+                        }}
+                        title="View flow run"
+                      >
+                        <i className="fas fa-project-diagram"></i>
+                        Flow
+                      </button>
+                    ) : (
+                      <span className="source-manual">
+                        <i className="fas fa-user"></i>
+                        Manual
+                      </span>
+                    )}
+                  </td>
+                  <td>
                     <button 
                       className="btn btn-ghost btn-sm"
                       onClick={(e) => {
@@ -1776,11 +2547,21 @@ const HistoryPage = ({ onViewExecution }) => {
 };
 
 // ===== Create Scenario Page =====
-const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated }) => {
-  const [objective, setObjective] = useState('');
-  const [stepsText, setStepsText] = useState('');
+const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated, editingScenario, initialFolderId }) => {
+  const { folders } = MOCK_DATA;
+  // Pre-fill data if editing an existing scenario
+  const isEditMode = !!editingScenario;
+  const [objective, setObjective] = useState(editingScenario?.objective || '');
+  const [selectedFolderId, setSelectedFolderId] = useState(
+    editingScenario?.folderId || initialFolderId || folders.find(f => f.isDefault)?.id || null
+  );
+  const [stepsText, setStepsText] = useState(
+    editingScenario?.steps?.map(s => s.description).join('\n') || ''
+  );
   const [parsedSteps, setParsedSteps] = useState([]);
-  const [stepsMode, setStepsMode] = useState(null); // 'demo' or 'custom'
+  const [stepsMode, setStepsMode] = useState(isEditMode ? 'custom' : null); // 'demo' or 'custom'
+  const [demoModified, setDemoModified] = useState(false); // Track if demo steps were edited
+  const [showDemoWarning, setShowDemoWarning] = useState(false); // Show warning modal when editing demo
   const [isRunning, setIsRunning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [runStatus, setRunStatus] = useState(null);
@@ -1789,6 +2570,185 @@ const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated }) => {
   const currentExecutionRef = React.useRef(null);
   const currentScenarioRef = React.useRef(null);
   const isCancelledRef = React.useRef(false);
+  
+  // Variable selector state
+  const [variables, setVariables] = useState([]);
+  const [showVariableSelector, setShowVariableSelector] = useState(false);
+  const [variableSearchTerm, setVariableSearchTerm] = useState('');
+  const [variableSelectorPosition, setVariableSelectorPosition] = useState(null);
+  const [variableTriggerIndex, setVariableTriggerIndex] = useState(-1);
+  const stepsTextareaRef = React.useRef(null);
+  
+  // Load variables on mount
+  useEffect(() => {
+    const savedVariables = StorageHelper.loadVariables();
+    if (savedVariables && savedVariables.length > 0) {
+      setVariables(savedVariables);
+    } else {
+      setVariables(MOCK_DATA.variables || []);
+    }
+  }, []);
+  
+  // Handle backslash key to trigger variable selector
+  const handleStepsKeyDown = (e) => {
+    // Allow variable insertion for custom mode or modified demo
+    if (e.key === '\\' && (stepsMode === 'custom' || demoModified)) {
+      e.preventDefault();
+      const textarea = stepsTextareaRef.current;
+      if (!textarea) return;
+      
+      // Get cursor position
+      const cursorPos = textarea.selectionStart;
+      
+      // Insert backslash
+      const newText = stepsText.slice(0, cursorPos) + '\\' + stepsText.slice(cursorPos);
+      setStepsText(newText);
+      
+      // Calculate position for dropdown
+      const textareaRect = textarea.getBoundingClientRect();
+      
+      // Get position relative to textarea
+      setVariableSelectorPosition({
+        top: textareaRect.top + 30,
+        left: textareaRect.left + 20
+      });
+      
+      setVariableTriggerIndex(cursorPos);
+      setVariableSearchTerm('');
+      setShowVariableSelector(true);
+      
+      // Set cursor position after state update
+      setTimeout(() => {
+        textarea.selectionStart = cursorPos + 1;
+        textarea.selectionEnd = cursorPos + 1;
+      }, 0);
+    } else if (showVariableSelector) {
+      // If variable selector is open, capture typing for search
+      if (e.key === 'Escape') {
+        setShowVariableSelector(false);
+      } else if (e.key === 'Backspace') {
+        if (variableSearchTerm.length > 0) {
+          setVariableSearchTerm(prev => prev.slice(0, -1));
+        } else {
+          setShowVariableSelector(false);
+        }
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        // Add character to search term
+        setVariableSearchTerm(prev => prev + e.key);
+      }
+    }
+  };
+  
+  // Handle variable selection
+  const handleVariableSelect = (variable) => {
+    const textarea = stepsTextareaRef.current;
+    if (!textarea) return;
+    
+    // Create variable reference using variable name
+    const variableRef = variable.name.replace(/\s+/g, '_');
+    
+    // Replace from trigger index (backslash position) to current position
+    const beforeTrigger = stepsText.slice(0, variableTriggerIndex);
+    const afterCursor = stepsText.slice(variableTriggerIndex + 1 + variableSearchTerm.length);
+    const newText = beforeTrigger + '\\' + variableRef + afterCursor;
+    
+    setStepsText(newText);
+    setShowVariableSelector(false);
+    setVariableSearchTerm('');
+    
+    // Set cursor position after the inserted variable
+    const newCursorPos = variableTriggerIndex + variableRef.length + 1;
+    setTimeout(() => {
+      textarea.focus();
+      textarea.selectionStart = newCursorPos;
+      textarea.selectionEnd = newCursorPos;
+    }, 0);
+  };
+  
+  // Open variable search modal
+  const handleSearchVariables = () => {
+    const textarea = stepsTextareaRef.current;
+    if (!textarea) return;
+    
+    const textareaRect = textarea.getBoundingClientRect();
+    setVariableSelectorPosition({
+      top: textareaRect.top + 30,
+      left: textareaRect.left + 20
+    });
+    setVariableTriggerIndex(textarea.selectionStart);
+    setVariableSearchTerm('');
+    setShowVariableSelector(true);
+  };
+  
+  // Resolve variable references in text
+  // Converts \Variable_Name to actual credential information
+  const resolveVariables = (text) => {
+    if (!text || !variables || variables.length === 0) return text;
+    
+    // Find all variable references (backslash followed by word characters/underscores)
+    const variablePattern = /\\([A-Za-z0-9_]+)/g;
+    
+    return text.replace(variablePattern, (match, varName) => {
+      // Find the variable by matching the name (with underscores converted to spaces for comparison)
+      const searchName = varName.replace(/_/g, ' ').toLowerCase();
+      const variable = variables.find(v => 
+        v.name.toLowerCase() === searchName ||
+        v.name.replace(/\s+/g, '_').toLowerCase() === varName.toLowerCase()
+      );
+      
+      if (!variable) {
+        // Variable not found, keep original reference
+        return match;
+      }
+      
+      // Build the resolved text with all variable fields
+      const fieldTexts = variable.fields.map(field => {
+        if (field.isSecret && field.value) {
+          // For secret fields, include the value (Browser Use needs it)
+          return `${field.label}: ${field.value}`;
+        } else if (field.value) {
+          return `${field.label}: ${field.value}`;
+        }
+        return null;
+      }).filter(Boolean);
+      
+      if (fieldTexts.length === 0) {
+        return `[${variable.name}]`;
+      }
+      
+      // Return formatted credentials block
+      return `[${variable.name} Credentials - ${fieldTexts.join(', ')}]`;
+    });
+  };
+  
+  // Resolve variables for Browser Use API (includes sensitive data)
+  const resolveVariablesForAPI = (text) => {
+    if (!text || !variables || variables.length === 0) return text;
+    
+    const variablePattern = /\\([A-Za-z0-9_]+)/g;
+    
+    return text.replace(variablePattern, (match, varName) => {
+      const searchName = varName.replace(/_/g, ' ').toLowerCase();
+      const variable = variables.find(v => 
+        v.name.toLowerCase() === searchName ||
+        v.name.replace(/\s+/g, '_').toLowerCase() === varName.toLowerCase()
+      );
+      
+      if (!variable) {
+        return match;
+      }
+      
+      // Build detailed credentials for Browser Use
+      const lines = [`Platform: ${variable.name}`];
+      variable.fields.forEach(field => {
+        if (field.value) {
+          lines.push(`${field.label}: ${field.value}`);
+        }
+      });
+      
+      return `\n--- ${variable.name} Configuration ---\n${lines.join('\n')}\n---\n`;
+    });
+  };
   
   // Demo steps from supply chain example
   const demoStepsText = `Login to Oracle Fusion Cloud
@@ -1802,11 +2762,38 @@ Click Actions → Open`;
   // Handle steps mode selection
   const handleStepsModeSelect = (mode) => {
     setStepsMode(mode);
+    setDemoModified(false);
+    setShowDemoWarning(false);
     if (mode === 'demo') {
       setStepsText(demoStepsText);
     } else {
       setStepsText('');
     }
+  };
+
+  // Handle demo steps change with warning
+  const handleDemoStepsChange = (newText) => {
+    if (stepsMode === 'demo' && !demoModified && newText !== demoStepsText) {
+      // First time editing demo steps - show warning
+      setShowDemoWarning(true);
+    }
+    setStepsText(newText);
+    if (stepsMode === 'demo' && newText !== demoStepsText) {
+      setDemoModified(true);
+    }
+  };
+
+  // Confirm editing demo - convert to custom
+  const handleConfirmDemoEdit = () => {
+    setShowDemoWarning(false);
+    // Keep demoModified true to show the warning badge
+  };
+
+  // Cancel demo edit - restore original
+  const handleCancelDemoEdit = () => {
+    setStepsText(demoStepsText);
+    setDemoModified(false);
+    setShowDemoWarning(false);
   };
   
   // Parse steps from text
@@ -1826,10 +2813,116 @@ Click Actions → Open`;
     setParsedSteps(steps);
   }, [stepsText]);
   
+  // Function to update existing scenario (edit mode)
+  const handleUpdateScenario = () => {
+    if (!editingScenario) return;
+    
+    const currentTime = new Date().toISOString();
+    
+    // Find and update the scenario
+    const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === editingScenario.id);
+    if (scenarioIndex === -1) {
+      alert('Error: Scenario not found');
+      return;
+    }
+    
+    // Update steps
+    const updatedSteps = parsedSteps.map((step, index) => ({
+      id: `${editingScenario.id}-step-${String(index + 1).padStart(3, '0')}`,
+      order: index + 1,
+      description: step.description,
+      status: 'pending',
+      duration: null,
+      startTime: null,
+      endTime: null
+    }));
+    
+    // Update the scenario
+    MOCK_DATA.scenarios[scenarioIndex] = {
+      ...MOCK_DATA.scenarios[scenarioIndex],
+      objective: objective || 'Untitled Scenario',
+      folderId: selectedFolderId || MOCK_DATA.scenarios[scenarioIndex].folderId,
+      description: objective ? `Custom scenario: ${objective}` : 'Custom scenario',
+      updatedAt: currentTime,
+      steps: updatedSteps
+    };
+    
+    // Persist data to localStorage
+    StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+    
+    // Notify parent
+    if (onScenarioCreated) {
+      onScenarioCreated(editingScenario.id);
+    }
+    
+    alert(`Scenario "${objective}" updated successfully with ${updatedSteps.length} steps!`);
+    onNavigate('scenarios');
+  };
+  
+  // Function to save scenario without running it
+  const handleSaveOnly = () => {
+    const timestamp = Date.now();
+    const newScenarioId = `scenario-custom-${timestamp}`;
+    const currentTime = new Date().toISOString();
+    
+    // Create steps from parsed input
+    const newSteps = parsedSteps.map((step, index) => ({
+      id: `${newScenarioId}-step-${String(index + 1).padStart(3, '0')}`,
+      order: index + 1,
+      description: step.description,
+      status: 'pending',
+      duration: null,
+      startTime: null,
+      endTime: null
+    }));
+    
+    // Create new scenario without execution
+    const newScenario = {
+      id: newScenarioId,
+      folderId: selectedFolderId || folders.find(f => f.isDefault)?.id,
+      objective: objective || 'Untitled Scenario',
+      description: objective ? `Custom scenario: ${objective}` : 'Custom scenario',
+      tags: ['custom'],
+      createdAt: currentTime,
+      updatedAt: currentTime,
+      createdBy: 'admin@trinamix.com',
+      status: 'pending',
+      lastRun: null, // No execution yet
+      configuration: {
+        timeout: 300,
+        retryOnFailure: true,
+        maxRetries: 2,
+        captureScreenshots: true,
+        browser: 'chrome',
+        viewportWidth: 1920,
+        viewportHeight: 1080
+      },
+      steps: newSteps
+    };
+    
+    // Add to MOCK_DATA
+    MOCK_DATA.scenarios.unshift(newScenario);
+    
+    // Update stats
+    MOCK_DATA.stats.totalScenarios += 1;
+    
+    // Persist data to localStorage
+    StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+    StorageHelper.saveStats(MOCK_DATA.stats);
+    
+    // Notify parent
+    if (onScenarioCreated) {
+      onScenarioCreated(newScenarioId);
+    }
+    
+    alert(`Scenario "${objective}" saved successfully with ${newSteps.length} steps!\n\nYou can run it later from the scenario details page.`);
+    onNavigate('scenarios');
+  };
+  
   const handleSubmit = async () => {
     // Generate unique IDs for the new scenario and execution
     const timestamp = Date.now();
-    const isDemo = stepsMode === 'demo';
+    const isDemo = stepsMode === 'demo' && !demoModified; // Modified demo is treated as custom
     const newScenarioId = `scenario-${isDemo ? 'demo' : 'custom'}-${timestamp}`;
     const newExecutionId = `exec-${isDemo ? 'demo' : 'custom'}-${timestamp}`;
     const currentTime = new Date().toISOString();
@@ -1882,7 +2975,7 @@ Click Actions → Open`;
       newExecution = {
         id: newExecutionId,
         scenarioId: newScenarioId,
-        scenarioObjective: objective,
+        scenarioObjective: objective || 'Untitled Scenario',
         status: 'passed',
         startTime: currentTime,
         endTime: currentTime,
@@ -1923,7 +3016,7 @@ Click Actions → Open`;
       newExecution = {
         id: newExecutionId,
         scenarioId: newScenarioId,
-        scenarioObjective: objective,
+        scenarioObjective: objective || 'Untitled Scenario',
         status: 'running',
         startTime: currentTime,
         endTime: null,
@@ -1949,10 +3042,12 @@ Click Actions → Open`;
     }
     
     // Create new scenario
+    const scenarioObjective = objective || 'Untitled Scenario';
     const newScenario = {
       id: newScenarioId,
-      objective: objective,
-      description: isDemo ? `Demo scenario created from: ${objective}` : `Custom scenario: ${objective}`,
+      folderId: selectedFolderId || folders.find(f => f.isDefault)?.id,
+      objective: scenarioObjective,
+      description: isDemo ? `Demo scenario created from: ${scenarioObjective}` : (objective ? `Custom scenario: ${objective}` : 'Custom scenario'),
       tags: isDemo ? ['demo', ...(referenceScenario?.tags || [])] : ['custom'],
       createdAt: currentTime,
       updatedAt: currentTime,
@@ -2012,8 +3107,17 @@ Click Actions → Open`;
     
     try {
       // Build the task prompt from objective and steps
+      // Resolve any variable references to their actual values
       const taskStepsText = newSteps.map((s, i) => `${i + 1}. ${s.description}`).join('\n');
-      const taskPrompt = `Objective: ${objective}\n\nSteps to execute:\n${taskStepsText}`;
+      const rawPrompt = objective 
+        ? `Objective: ${objective}\n\nSteps to execute:\n${taskStepsText}`
+        : `Steps to execute:\n${taskStepsText}`;
+      
+      // Resolve variables - replace \Variable_Name with actual credentials/config
+      const taskPrompt = resolveVariablesForAPI(rawPrompt);
+      
+      // Log resolved prompt for debugging (without showing in UI)
+      console.log('Task prompt with resolved variables:', taskPrompt);
       
       // Create the task
       const createResult = await BrowserUseAPI.createTask(taskPrompt, {
@@ -2247,14 +3351,54 @@ Click Actions → Open`;
             <i className="fas fa-arrow-left"></i>
             Back
           </button>
-          <h1 className="page-title">Create New Scenario</h1>
-          <p className="page-subtitle">Define your test objective and steps</p>
+          <h1 className="page-title">{isEditMode ? 'Edit Scenario' : 'Create New Scenario'}</h1>
+          <p className="page-subtitle">{isEditMode ? 'Modify your test objective and steps' : 'Define your test objective and steps'}</p>
         </div>
       </div>
       
       <div className="create-scenario-layout">
         {/* Input Section */}
         <div className="input-section">
+          {/* Folder Selection Card */}
+          <div className="card mb-4">
+            <div className="card-header">
+              <h3 className="card-title">
+                <div className="hierarchy-indicator small">
+                  <i className="fas fa-folder"></i>
+                  <span>FOLDER</span>
+                </div>
+                Save Location
+              </h3>
+            </div>
+            <div className="card-body">
+              <div className="form-group">
+                <label>Select folder to save this scenario</label>
+                <select
+                  className="form-input folder-select"
+                  value={selectedFolderId || ''}
+                  onChange={(e) => setSelectedFolderId(e.target.value)}
+                >
+                  {folders.map(folder => {
+                    // Calculate depth for indentation
+                    let depth = 0;
+                    let parent = folders.find(f => f.id === folder.parentId);
+                    while (parent) {
+                      depth++;
+                      parent = folders.find(f => f.id === parent.parentId);
+                    }
+                    const indent = '\u00A0\u00A0\u00A0\u00A0'.repeat(depth);
+                    const icon = folder.parentId ? '📁' : '📂';
+                    return (
+                      <option key={folder.id} value={folder.id}>
+                        {indent}{icon} {folder.name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+          </div>
+          
           <div className="card mb-4">
             <div className="card-header">
               <h3 className="card-title">
@@ -2267,7 +3411,7 @@ Click Actions → Open`;
             </div>
             <div className="card-body">
               <div className="form-group">
-                <label>What do you want to verify or accomplish?</label>
+                <label>What do you want to verify or accomplish? <span className="optional-label">(Optional)</span></label>
                 <textarea
                   className="form-input objective-input"
                   placeholder="e.g., Verify that Supply Plans are correctly configured and can be opened"
@@ -2327,34 +3471,79 @@ Click Actions → Open`;
               {stepsMode && (
                 <>
                   <div className="steps-mode-header">
-                    <span className="mode-badge">
-                      <i className={`fas ${stepsMode === 'demo' ? 'fa-magic' : 'fa-edit'}`}></i>
-                      {stepsMode === 'demo' ? 'Demo Steps' : 'Custom Steps'}
+                    <span className={`mode-badge ${demoModified ? 'modified' : ''}`}>
+                      <i className={`fas ${stepsMode === 'demo' && !demoModified ? 'fa-magic' : 'fa-edit'}`}></i>
+                      {stepsMode === 'demo' 
+                        ? (demoModified ? 'Demo Steps (Modified - Custom Mode)' : 'Demo Steps')
+                        : 'Custom Steps'
+                      }
                     </span>
-                    <button 
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setStepsMode(null)}
-                    >
-                      <i className="fas fa-undo"></i>
-                      Change Mode
-                    </button>
+                    <div className="steps-mode-actions">
+                      {(stepsMode === 'custom' || demoModified) && (
+                        <button 
+                          className="btn btn-ghost btn-sm"
+                          onClick={handleSearchVariables}
+                          title="Insert a variable"
+                        >
+                          <i className="fas fa-key"></i>
+                          Search Variables
+                        </button>
+                      )}
+                      {demoModified && (
+                        <button 
+                          className="btn btn-ghost btn-sm"
+                          onClick={handleCancelDemoEdit}
+                          title="Restore original demo steps"
+                        >
+                          <i className="fas fa-undo-alt"></i>
+                          Restore Demo
+                        </button>
+                      )}
+                      <button 
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setStepsMode(null)}
+                      >
+                        <i className="fas fa-undo"></i>
+                        Change Mode
+                      </button>
+                    </div>
                   </div>
-                  <div className="form-group">
+                  <div className="form-group steps-input-container">
                     <label>Enter each step on a new line:</label>
-                    <textarea
-                      className="form-input steps-input mono"
-                      placeholder={`1. Login to Oracle Fusion Cloud\n2. Click Navigator (☰) → Supply Chain Planning\n3. Click Tasks → Manage Plans\n...`}
-                      value={stepsText}
-                      onChange={(e) => setStepsText(e.target.value)}
-                      rows={10}
-                      readOnly={stepsMode === 'demo'}
+                    <div className="textarea-with-hint">
+                      <textarea
+                        ref={stepsTextareaRef}
+                        className="form-input steps-input mono"
+                        placeholder={`1. Login to Oracle Fusion Cloud\n2. Click Navigator (☰) → Supply Chain Planning\n3. Click Tasks → Manage Plans\n...\n\nTip: Type \\ to insert variables`}
+                        value={stepsText}
+                        onChange={(e) => handleDemoStepsChange(e.target.value)}
+                        onKeyDown={handleStepsKeyDown}
+                        rows={10}
+                      />
+                      {(stepsMode === 'custom' || demoModified) && (
+                        <div className="textarea-hint">
+                          <kbd>\</kbd> to insert variables
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Variable Selector Dropdown */}
+                    <VariableSelector
+                      variables={variables}
+                      isOpen={showVariableSelector}
+                      onClose={() => setShowVariableSelector(false)}
+                      onSelect={handleVariableSelect}
+                      searchTerm={variableSearchTerm}
+                      position={variableSelectorPosition}
                     />
                   </div>
-                  <p className="form-hint">
-                    <i className="fas fa-info-circle"></i>
-                    {stepsMode === 'demo' 
-                      ? 'Demo steps and execution details from the Supply Chain example are pre-filled.'
-                      : 'Each step will be resolved by browser_use API into sub-steps (browser actions)'
+                  <p className={`form-hint ${demoModified ? 'warning' : ''}`}>
+                    <i className={`fas ${demoModified ? 'fa-exclamation-triangle' : 'fa-info-circle'}`}></i>
+                    {stepsMode === 'demo' && !demoModified
+                      ? 'Demo steps and execution details from the Supply Chain example are pre-filled. You can edit them if needed.'
+                      : demoModified
+                        ? 'You have modified the demo steps. This scenario will be treated as custom and will NOT use pre-built demo data. The steps will be executed via Browser Use API.'
+                        : 'Each step will be resolved by browser_use API into sub-steps (browser actions). Use \\variableName to insert credentials.'
                     }
                   </p>
                 </>
@@ -2390,13 +3579,54 @@ Click Actions → Open`;
                     <span>STEPS ({parsedSteps.length})</span>
                   </div>
                   <div className="preview-steps-list">
-                    {parsedSteps.map((step) => (
-                      <div key={step.id} className="preview-step-item">
-                        <span className="step-number">{step.order}</span>
-                        <span className="step-text">{step.description}</span>
-                      </div>
-                    ))}
+                    {parsedSteps.map((step) => {
+                      // Check if step contains variable references
+                      const hasVariables = /\\([A-Za-z0-9_]+)/.test(step.description);
+                      
+                      // Render step with variable highlighting
+                      const renderStepText = () => {
+                        if (!hasVariables) return step.description;
+                        
+                        // Split by variable references and render with tags
+                        const parts = step.description.split(/(\\[A-Za-z0-9_]+)/g);
+                        return parts.map((part, idx) => {
+                          if (part.match(/^\\([A-Za-z0-9_]+)$/)) {
+                            const varName = part.slice(1);
+                            const searchName = varName.replace(/_/g, ' ').toLowerCase();
+                            const variable = variables.find(v => 
+                              v.name.toLowerCase() === searchName ||
+                              v.name.replace(/\s+/g, '_').toLowerCase() === varName.toLowerCase()
+                            );
+                            return (
+                              <span 
+                                key={idx} 
+                                className={`variable-tag-inline ${variable ? '' : 'invalid'}`}
+                                title={variable ? `${variable.name}: ${variable.fields.map(f => f.label).join(', ')}` : 'Variable not found'}
+                              >
+                                <i className="fas fa-key"></i>
+                                {variable ? variable.name : varName}
+                              </span>
+                            );
+                          }
+                          return part;
+                        });
+                      };
+                      
+                      return (
+                        <div key={step.id} className="preview-step-item">
+                          <span className="step-number">{step.order}</span>
+                          <span className="step-text">{renderStepText()}</span>
+                        </div>
+                      );
+                    })}
                   </div>
+                  {/* Show resolved variables hint */}
+                  {parsedSteps.some(s => /\\([A-Za-z0-9_]+)/.test(s.description)) && (
+                    <div className="variables-resolved-hint">
+                      <i className="fas fa-info-circle"></i>
+                      <span>Variables will be replaced with their configured values when executed</span>
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -2438,19 +3668,85 @@ Click Actions → Open`;
                   </button>
                 </div>
               ) : (
-                <button 
-                  className="btn btn-primary btn-block"
-                  disabled={!objective || parsedSteps.length === 0}
-                  onClick={handleSubmit}
-                >
-                  <i className="fas fa-rocket"></i>
-                  {stepsMode === 'demo' ? 'Create Demo Scenario' : 'Create & Run Scenario'}
-                </button>
+                <div className="action-buttons-group">
+                  {isEditMode ? (
+                    <button 
+                      className="btn btn-primary btn-block"
+                      disabled={parsedSteps.length === 0}
+                      onClick={handleUpdateScenario}
+                    >
+                      <i className="fas fa-save"></i>
+                      Save Changes
+                    </button>
+                  ) : (
+                    <>
+                      {(stepsMode !== 'demo' || demoModified) && (
+                        <button 
+                          className="btn btn-secondary btn-block mb-2"
+                          disabled={parsedSteps.length === 0}
+                          onClick={() => handleSaveOnly()}
+                        >
+                          <i className="fas fa-save"></i>
+                          Save Scenario
+                        </button>
+                      )}
+                      <button 
+                        className="btn btn-primary btn-block"
+                        disabled={parsedSteps.length === 0}
+                        onClick={handleSubmit}
+                      >
+                        <i className="fas fa-rocket"></i>
+                        {stepsMode === 'demo' && !demoModified ? 'Create Demo Scenario' : 'Create & Run Scenario'}
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </div>
         </div>
       </div>
+      
+      {/* Demo Edit Warning Modal */}
+      {showDemoWarning && (
+        <div className="modal-overlay" onClick={handleCancelDemoEdit}>
+          <div className="modal-content warning-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header warning">
+              <div className="modal-icon warning">
+                <i className="fas fa-exclamation-triangle"></i>
+              </div>
+              <h3>Editing Demo Steps</h3>
+            </div>
+            <div className="modal-body">
+              <p className="warning-message">
+                <strong>Warning:</strong> You are about to edit the demo steps.
+              </p>
+              <p>
+                If you modify these steps, the scenario will be treated as a <strong>custom scenario</strong> and will:
+              </p>
+              <ul className="warning-list">
+                <li><i className="fas fa-times-circle"></i> NOT use pre-built demo execution data</li>
+                <li><i className="fas fa-robot"></i> Execute steps via Browser Use API in real-time</li>
+                <li><i className="fas fa-clock"></i> Take longer to run as it performs actual browser actions</li>
+              </ul>
+              <p className="warning-note">
+                <i className="fas fa-info-circle"></i>
+                You can click "Restore Demo" at any time to revert to the original demo steps.
+              </p>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={handleCancelDemoEdit}>
+                <i className="fas fa-undo"></i>
+                Keep Original
+              </button>
+              <button className="btn btn-warning" onClick={handleConfirmDemoEdit}>
+                <i className="fas fa-edit"></i>
+                Continue Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3411,6 +4707,2458 @@ const StepDetailPage = ({ executionId, stepId, onBack }) => {
   );
 };
 
+// ===== Variables Page Component =====
+const VariablesPage = ({ onVariablesChange }) => {
+  const [variables, setVariables] = useState([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingVariable, setEditingVariable] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  
+  // New/Edit variable form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    category: '',
+    fields: [{ key: '', label: '', value: '', type: 'text', isSecret: false }]
+  });
+  
+  // Load variables from storage on mount
+  useEffect(() => {
+    const savedVariables = StorageHelper.loadVariables();
+    if (savedVariables && savedVariables.length > 0) {
+      setVariables(savedVariables);
+    } else {
+      // Use default variables from MOCK_DATA
+      setVariables(MOCK_DATA.variables || []);
+    }
+  }, []);
+  
+  // Save variables to storage whenever they change
+  const saveVariables = (newVariables) => {
+    setVariables(newVariables);
+    MOCK_DATA.variables = newVariables;
+    StorageHelper.saveVariables(newVariables);
+    if (onVariablesChange) {
+      onVariablesChange(newVariables);
+    }
+  };
+  
+  // Get unique categories
+  const categories = useMemo(() => {
+    const cats = new Set(variables.map(v => v.category).filter(Boolean));
+    return ['all', ...Array.from(cats)];
+  }, [variables]);
+  
+  // Filter variables
+  const filteredVariables = useMemo(() => {
+    return variables.filter(v => {
+      const matchesSearch = !searchQuery || 
+        v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || v.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [variables, searchQuery, selectedCategory]);
+  
+  // Reset form
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      category: '',
+      fields: [{ key: '', label: '', value: '', type: 'text', isSecret: false }]
+    });
+    setEditingVariable(null);
+  };
+  
+  // Open create modal
+  const handleOpenCreate = () => {
+    resetForm();
+    setShowCreateModal(true);
+  };
+  
+  // Open edit modal
+  const handleOpenEdit = (variable) => {
+    setEditingVariable(variable);
+    setFormData({
+      name: variable.name,
+      description: variable.description || '',
+      category: variable.category || '',
+      fields: variable.fields.map(f => ({ ...f }))
+    });
+    setShowCreateModal(true);
+  };
+  
+  // Close modal
+  const handleCloseModal = () => {
+    setShowCreateModal(false);
+    resetForm();
+  };
+  
+  // Add a new field to the variable
+  const handleAddField = () => {
+    setFormData(prev => ({
+      ...prev,
+      fields: [...prev.fields, { key: '', label: '', value: '', type: 'text', isSecret: false }]
+    }));
+  };
+  
+  // Remove a field from the variable
+  const handleRemoveField = (index) => {
+    if (formData.fields.length <= 1) return;
+    setFormData(prev => ({
+      ...prev,
+      fields: prev.fields.filter((_, i) => i !== index)
+    }));
+  };
+  
+  // Update a field
+  const handleFieldChange = (index, key, value) => {
+    setFormData(prev => ({
+      ...prev,
+      fields: prev.fields.map((field, i) => 
+        i === index ? { ...field, [key]: value } : field
+      )
+    }));
+  };
+  
+  // Save variable (create or update)
+  const handleSaveVariable = () => {
+    if (!formData.name.trim()) {
+      alert('Please enter a variable name');
+      return;
+    }
+    
+    // Validate fields have keys
+    const invalidFields = formData.fields.filter(f => !f.key.trim() || !f.label.trim());
+    if (invalidFields.length > 0) {
+      alert('Please fill in all field keys and labels');
+      return;
+    }
+    
+    const now = new Date().toISOString();
+    
+    if (editingVariable) {
+      // Update existing
+      const updatedVariables = variables.map(v => 
+        v.id === editingVariable.id 
+          ? { ...v, ...formData, updatedAt: now }
+          : v
+      );
+      saveVariables(updatedVariables);
+    } else {
+      // Create new
+      const newVariable = {
+        id: `var-${Date.now()}`,
+        ...formData,
+        createdAt: now,
+        updatedAt: now
+      };
+      saveVariables([...variables, newVariable]);
+    }
+    
+    handleCloseModal();
+  };
+  
+  // Delete variable
+  const handleDeleteVariable = (variableId) => {
+    if (!confirm('Are you sure you want to delete this variable?')) return;
+    const updatedVariables = variables.filter(v => v.id !== variableId);
+    saveVariables(updatedVariables);
+  };
+  
+  // Duplicate variable
+  const handleDuplicateVariable = (variable) => {
+    const now = new Date().toISOString();
+    const newVariable = {
+      ...variable,
+      id: `var-${Date.now()}`,
+      name: `${variable.name} (Copy)`,
+      fields: variable.fields.map(f => ({ ...f })),
+      createdAt: now,
+      updatedAt: now
+    };
+    saveVariables([...variables, newVariable]);
+  };
+  
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">
+            <i className="fas fa-key"></i>
+            Variables
+          </h1>
+          <p className="page-subtitle">
+            Manage platform credentials and configuration variables for use in scenarios
+          </p>
+        </div>
+        <div className="page-actions">
+          <button className="btn btn-primary" onClick={handleOpenCreate}>
+            <i className="fas fa-plus"></i>
+            Add Variable
+          </button>
+        </div>
+      </div>
+      
+      {/* Filters */}
+      <div className="variables-filters">
+        <div className="search-bar">
+          <i className="fas fa-search"></i>
+          <input 
+            type="text"
+            placeholder="Search variables..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="search-clear-btn" onClick={() => setSearchQuery('')}>
+              <i className="fas fa-times"></i>
+            </button>
+          )}
+        </div>
+        <div className="category-filter">
+          {categories.map(cat => (
+            <button 
+              key={cat}
+              className={`filter-chip ${selectedCategory === cat ? 'active' : ''}`}
+              onClick={() => setSelectedCategory(cat)}
+            >
+              {cat === 'all' ? 'All Categories' : cat}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Variables Grid */}
+      <div className="variables-grid">
+        {filteredVariables.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-key"></i>
+            <h3>No variables found</h3>
+            <p>
+              {searchQuery || selectedCategory !== 'all' 
+                ? 'Try adjusting your search or filter'
+                : 'Create your first variable to store platform credentials and configuration'}
+            </p>
+            {!searchQuery && selectedCategory === 'all' && (
+              <button className="btn btn-primary" onClick={handleOpenCreate}>
+                <i className="fas fa-plus"></i>
+                Add Variable
+              </button>
+            )}
+          </div>
+        ) : (
+          filteredVariables.map(variable => (
+            <div key={variable.id} className="variable-card">
+              <div className="variable-card-header">
+                <div className="variable-icon">
+                  <i className="fas fa-cube"></i>
+                </div>
+                <div className="variable-info">
+                  <h3 className="variable-name">{variable.name}</h3>
+                  {variable.category && (
+                    <span className="variable-category">{variable.category}</span>
+                  )}
+                </div>
+                <div className="variable-actions">
+                  <button 
+                    className="icon-btn" 
+                    title="Edit"
+                    onClick={() => handleOpenEdit(variable)}
+                  >
+                    <i className="fas fa-edit"></i>
+                  </button>
+                  <button 
+                    className="icon-btn" 
+                    title="Duplicate"
+                    onClick={() => handleDuplicateVariable(variable)}
+                  >
+                    <i className="fas fa-copy"></i>
+                  </button>
+                  <button 
+                    className="icon-btn danger" 
+                    title="Delete"
+                    onClick={() => handleDeleteVariable(variable.id)}
+                  >
+                    <i className="fas fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+              
+              {variable.description && (
+                <p className="variable-description">{variable.description}</p>
+              )}
+              
+              <div className="variable-fields">
+                <div className="fields-header">
+                  <i className="fas fa-list"></i>
+                  <span>Fields ({variable.fields.length})</span>
+                </div>
+                <div className="fields-list">
+                  {variable.fields.map((field, idx) => (
+                    <div key={idx} className="field-item">
+                      <span className="field-label">{field.label}</span>
+                      <span className="field-value">
+                        {field.isSecret ? '••••••••' : (field.value || '(empty)')}
+                      </span>
+                      {field.isSecret && (
+                        <i className="fas fa-lock field-secret-icon" title="Secret field"></i>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="variable-usage">
+                <span className="usage-hint">
+                  <i className="fas fa-info-circle"></i>
+                  Use as: <code>\{variable.name.replace(/\s+/g, '_')}</code>
+                </span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Create/Edit Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={handleCloseModal}>
+          <div className="modal variable-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>
+                <i className="fas fa-key"></i>
+                {editingVariable ? 'Edit Variable' : 'Create Variable'}
+              </h2>
+              <button className="modal-close" onClick={handleCloseModal}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Variable Name <span className="required">*</span></label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g., Oracle Fusion Cloud"
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Category</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g., ERP, SCM, CRM"
+                    value={formData.category}
+                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                    list="category-suggestions"
+                  />
+                  <datalist id="category-suggestions">
+                    {categories.filter(c => c !== 'all').map(cat => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label>Description</label>
+                <textarea
+                  className="form-input"
+                  placeholder="Describe what this variable is used for..."
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                  rows={2}
+                />
+              </div>
+              
+              <div className="form-section">
+                <div className="form-section-header">
+                  <h3>
+                    <i className="fas fa-list"></i>
+                    Fields
+                  </h3>
+                  <button className="btn btn-ghost btn-sm" onClick={handleAddField}>
+                    <i className="fas fa-plus"></i>
+                    Add Field
+                  </button>
+                </div>
+                
+                <div className="fields-editor">
+                  {formData.fields.map((field, index) => (
+                    <div key={index} className="field-editor-row">
+                      <div className="field-editor-inputs">
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Key (e.g., url)"
+                          value={field.key}
+                          onChange={(e) => handleFieldChange(index, 'key', e.target.value)}
+                        />
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Label (e.g., URL)"
+                          value={field.label}
+                          onChange={(e) => handleFieldChange(index, 'label', e.target.value)}
+                        />
+                        <input
+                          type={field.isSecret ? 'password' : 'text'}
+                          className="form-input field-value-input"
+                          placeholder="Value"
+                          value={field.value}
+                          onChange={(e) => handleFieldChange(index, 'value', e.target.value)}
+                        />
+                        <select
+                          className="form-input field-type-select"
+                          value={field.type}
+                          onChange={(e) => handleFieldChange(index, 'type', e.target.value)}
+                        >
+                          <option value="text">Text</option>
+                          <option value="url">URL</option>
+                          <option value="password">Password</option>
+                          <option value="number">Number</option>
+                        </select>
+                        <label className="checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={field.isSecret}
+                            onChange={(e) => handleFieldChange(index, 'isSecret', e.target.checked)}
+                          />
+                          <i className={`fas ${field.isSecret ? 'fa-lock' : 'fa-lock-open'}`}></i>
+                        </label>
+                      </div>
+                      <button 
+                        className="btn btn-ghost btn-sm danger"
+                        onClick={() => handleRemoveField(index)}
+                        disabled={formData.fields.length <= 1}
+                      >
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={handleCloseModal}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleSaveVariable}>
+                <i className="fas fa-save"></i>
+                {editingVariable ? 'Save Changes' : 'Create Variable'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===== Flow Snapshot Viewer Component =====
+// Displays a read-only view of a flow diagram snapshot with execution status overlay
+const FlowSnapshotViewer = ({ flowSnapshot, nodeResults, compact = false }) => {
+  const { useEffect, useRef, useState } = React;
+  const containerRef = useRef(null);
+  const drawflowRef = useRef(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  useEffect(() => {
+    if (!containerRef.current || !flowSnapshot || isInitialized) return;
+    // Small delay to ensure container is ready
+    const timer = setTimeout(() => {
+      try {
+        // Initialize Drawflow in edit mode for pan/zoom
+        const editor = new Drawflow(containerRef.current);
+        editor.editor_mode = 'edit'; // Allow pan/zoom
+        editor.start();
+        // Import the flow snapshot
+        if (flowSnapshot.drawflow) {
+          editor.import(flowSnapshot);
+        }
+        // Disable node dragging, connection creation, and context menu
+        editor.container.addEventListener('contextmenu', e => e.preventDefault());
+        editor.container.addEventListener('mousedown', e => {
+          // Prevent node drag
+          if (e.target.closest('.drawflow-node')) {
+            e.stopPropagation();
+          }
+        }, true);
+        editor.container.addEventListener('dblclick', e => e.preventDefault());
+        // Remove all event listeners for node editing
+        editor.container.querySelectorAll('.drawflow-node').forEach(node => {
+          node.onmousedown = null;
+          node.ondblclick = null;
+        });
+        drawflowRef.current = editor;
+        setIsInitialized(true);
+        // Apply execution status overlays after a short delay
+        setTimeout(() => {
+          applyStatusOverlays();
+        }, 100);
+        // Center and fit the diagram
+        setTimeout(() => {
+          if (compact) {
+            editor.zoom_out();
+            editor.zoom_out();
+          }
+        }, 200);
+      } catch (err) {
+        console.error('Error initializing flow snapshot viewer:', err);
+      }
+    }, 100);
+    return () => {
+      clearTimeout(timer);
+      if (drawflowRef.current) {
+        drawflowRef.current.clear();
+      }
+    };
+  }, [flowSnapshot, compact]);
+  
+  // Apply status overlays based on nodeResults
+  const applyStatusOverlays = () => {
+    if (!nodeResults || !containerRef.current) return;
+    
+    Object.entries(nodeResults).forEach(([nodeId, result]) => {
+      const nodeElement = containerRef.current.querySelector(`#node-${nodeId}`);
+      if (nodeElement) {
+        // Remove any existing status classes
+        nodeElement.classList.remove('snapshot-passed', 'snapshot-failed', 'snapshot-skipped', 'snapshot-control');
+        
+        // Apply appropriate status class
+        if (result.type === 'start' || result.type === 'end' || result.type === 'condition') {
+          nodeElement.classList.add('snapshot-control');
+        } else if (result.skipped) {
+          nodeElement.classList.add('snapshot-skipped');
+        } else if (result.success) {
+          nodeElement.classList.add('snapshot-passed');
+        } else {
+          nodeElement.classList.add('snapshot-failed');
+        }
+        
+        // Add status badge
+        const existingBadge = nodeElement.querySelector('.snapshot-status-badge');
+        if (!existingBadge) {
+          const badge = document.createElement('div');
+          badge.className = 'snapshot-status-badge';
+          
+          if (result.type === 'start') {
+            badge.innerHTML = '<i class="fas fa-play-circle"></i>';
+            badge.classList.add('control');
+          } else if (result.type === 'end') {
+            badge.innerHTML = '<i class="fas fa-stop-circle"></i>';
+            badge.classList.add('control');
+          } else if (result.type === 'condition') {
+            badge.innerHTML = '<i class="fas fa-code-branch"></i>';
+            badge.classList.add('control');
+          } else if (result.skipped) {
+            badge.innerHTML = '<i class="fas fa-forward"></i>';
+            badge.classList.add('skipped');
+          } else if (result.success) {
+            badge.innerHTML = '<i class="fas fa-check-circle"></i>';
+            badge.classList.add('success');
+          } else {
+            badge.innerHTML = '<i class="fas fa-times-circle"></i>';
+            badge.classList.add('failed');
+          }
+          
+          nodeElement.appendChild(badge);
+        }
+      }
+    });
+  };
+  
+  // Re-apply overlays when nodeResults change
+  useEffect(() => {
+    if (isInitialized && nodeResults) {
+      applyStatusOverlays();
+    }
+  }, [nodeResults, isInitialized]);
+  
+  if (!flowSnapshot) {
+    return (
+      <div className="flow-snapshot-empty">
+        <i className="fas fa-exclamation-triangle"></i>
+        <span>Flow diagram not available for this run</span>
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`flow-snapshot-container ${compact ? 'compact' : 'fullscreen'}`}>
+      <div ref={containerRef} className="flow-snapshot-canvas"></div>
+      {compact && (
+        <div className="flow-snapshot-hint">
+          <i className="fas fa-mouse-pointer"></i> Pan to explore • Click expand for full view
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===== Flow Builder Page Component =====
+const FlowBuilderPage = ({ onNavigate, onViewExecution, targetFlowRunId, onClearTargetFlowRun }) => {
+  const { useState, useEffect, useRef, useCallback } = React;
+  const drawflowRef = useRef(null);
+  const editorRef = useRef(null);
+  const isCancelledRef = useRef(false);
+  const currentTaskIdRef = useRef(null);
+  const [scenarios, setScenarios] = useState(MOCK_DATA.scenarios || []);
+  const [selectedFlow, setSelectedFlow] = useState(null);
+  const [flows, setFlows] = useState(() => {
+    // Load saved flows from localStorage
+    try {
+      const saved = localStorage.getItem('trinamix_flows');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [flowRuns, setFlowRuns] = useState(() => StorageHelper.loadFlowRuns() || []);
+  const [flowName, setFlowName] = useState('');
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [flowToDelete, setFlowToDelete] = useState(null);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [flowToRename, setFlowToRename] = useState(null);
+  const [newFlowName, setNewFlowName] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [executionLog, setExecutionLog] = useState([]);
+  const [showExecutionModal, setShowExecutionModal] = useState(false);
+  const [currentExecutingNode, setCurrentExecutingNode] = useState(null);
+  const [executionResults, setExecutionResults] = useState({});
+  const [currentFlowRun, setCurrentFlowRun] = useState(null);
+  const [showFlowRunsPanel, setShowFlowRunsPanel] = useState(false);
+  const [selectedFlowRun, setSelectedFlowRun] = useState(null);
+  const [showFlowRunDetail, setShowFlowRunDetail] = useState(false);
+  const [showFullScreenSnapshot, setShowFullScreenSnapshot] = useState(false);
+  
+  // Handle navigation from external pages to view a specific flow run
+  useEffect(() => {
+    if (targetFlowRunId && flowRuns.length > 0) {
+      const flowRun = flowRuns.find(r => r.id === targetFlowRunId);
+      if (flowRun) {
+        setSelectedFlowRun(flowRun);
+        setShowFlowRunsPanel(true);
+        setShowFlowRunDetail(true);
+      }
+      // Clear the target after handling
+      onClearTargetFlowRun && onClearTargetFlowRun();
+    }
+  }, [targetFlowRunId, flowRuns, onClearTargetFlowRun]);
+  
+  // Save flow runs to localStorage
+  const saveFlowRunsToStorage = useCallback((runsData) => {
+    StorageHelper.saveFlowRuns(runsData);
+    setFlowRuns(runsData);
+  }, []);
+  
+  // Save flows to localStorage
+  const saveFlowsToStorage = useCallback((flowsData) => {
+    try {
+      localStorage.setItem('trinamix_flows', JSON.stringify(flowsData));
+    } catch (e) {
+      console.error('Error saving flows:', e);
+    }
+  }, []);
+  
+  // Initialize Drawflow editor
+  useEffect(() => {
+    if (drawflowRef.current && !editorRef.current) {
+      const editor = new Drawflow(drawflowRef.current);
+      editor.reroute = true;
+      editor.reroute_fix_curvature = true;
+      editor.force_first_input = false;
+      
+      // Custom zoom settings
+      editor.zoom_max = 1.6;
+      editor.zoom_min = 0.4;
+      editor.zoom_value = 0.1;
+      
+      editor.start();
+      editorRef.current = editor;
+      
+      // Add default Start and End nodes after a short delay
+      setTimeout(() => {
+        if (editorRef.current && Object.keys(editorRef.current.export().drawflow.Home.data).length === 0) {
+          // Only add default nodes if canvas is empty
+          addStartNode();
+          addEndNode();
+        }
+      }, 200);
+      
+      // Add event listeners
+      editor.on('nodeCreated', (id) => {
+        console.log('Node created:', id);
+      });
+      
+      editor.on('nodeRemoved', (id) => {
+        console.log('Node removed:', id);
+      });
+      
+      editor.on('connectionCreated', (connection) => {
+        console.log('Connection created:', connection);
+      });
+    }
+    
+    return () => {
+      if (editorRef.current) {
+        // Cleanup if needed
+      }
+    };
+  }, []);
+  
+  // Add a scenario node to the canvas
+  const addScenarioNode = useCallback((scenario) => {
+    if (!editorRef.current) return;
+    
+    const statusColor = {
+      'passed': '#10b981',
+      'failed': '#ef4444',
+      'running': '#f59e0b',
+      'pending': '#6b7280'
+    }[scenario.status] || '#6b7280';
+    
+    const statusIcon = {
+      'passed': 'fa-check-circle',
+      'failed': 'fa-times-circle',
+      'running': 'fa-spinner fa-spin',
+      'pending': 'fa-clock'
+    }[scenario.status] || 'fa-clock';
+    
+    const nodeHtml = `
+      <div class="flow-node-content">
+        <div class="flow-node-header" style="background: ${statusColor}">
+          <i class="fas ${statusIcon}"></i>
+          <span class="flow-node-status">${scenario.status || 'pending'}</span>
+        </div>
+        <div class="flow-node-body">
+          <div class="flow-node-title">${scenario.objective?.substring(0, 40) || 'Untitled'}${scenario.objective?.length > 40 ? '...' : ''}</div>
+          <div class="flow-node-meta">
+            <span><i class="fas fa-list"></i> ${scenario.steps?.length || 0} steps</span>
+            ${scenario.tags?.length ? `<span class="flow-node-tag">${scenario.tags[0]}</span>` : ''}
+          </div>
+        </div>
+        <div class="flow-node-footer">
+          <span class="flow-node-id">ID: ${scenario.id}</span>
+        </div>
+      </div>
+    `;
+    
+    // Get a random position on the visible canvas area
+    const x = 150 + Math.random() * 400;
+    const y = 100 + Math.random() * 300;
+    
+    editorRef.current.addNode(
+      scenario.id,           // name
+      1,                     // inputs
+      1,                     // outputs
+      x,                     // pos_x
+      y,                     // pos_y
+      'scenario-node',       // class
+      { scenarioId: scenario.id, objective: scenario.objective }, // data
+      nodeHtml               // html
+    );
+  }, []);
+  
+  // Add START node
+  const addStartNode = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const nodeHtml = `
+      <div class="flow-node-content flow-node-start">
+        <div class="flow-node-body">
+          <i class="fas fa-play-circle"></i>
+          <span>START</span>
+        </div>
+      </div>
+    `;
+    
+    editorRef.current.addNode(
+      'start',
+      0,
+      1,
+      50,
+      200,
+      'start-node',
+      { type: 'start' },
+      nodeHtml
+    );
+  }, []);
+  
+  // Add END node
+  const addEndNode = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const nodeHtml = `
+      <div class="flow-node-content flow-node-end">
+        <div class="flow-node-body">
+          <i class="fas fa-stop-circle"></i>
+          <span>END</span>
+        </div>
+      </div>
+    `;
+    
+    editorRef.current.addNode(
+      'end',
+      1,
+      0,
+      800,
+      200,
+      'end-node',
+      { type: 'end' },
+      nodeHtml
+    );
+  }, []);
+  
+  // Add condition/branch node
+  const addConditionNode = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const nodeHtml = `
+      <div class="flow-node-content flow-node-condition">
+        <div class="flow-node-body">
+          <i class="fas fa-code-branch"></i>
+          <span>Condition</span>
+        </div>
+        <div class="flow-node-outputs">
+          <span class="output-label success">Pass</span>
+          <span class="output-label error">Fail</span>
+        </div>
+      </div>
+    `;
+    
+    const x = 400 + Math.random() * 200;
+    const y = 150 + Math.random() * 200;
+    
+    editorRef.current.addNode(
+      'condition',
+      1,
+      2,
+      x,
+      y,
+      'condition-node',
+      { type: 'condition' },
+      nodeHtml
+    );
+  }, []);
+  
+  // Clear canvas
+  const clearCanvas = useCallback(() => {
+    if (editorRef.current) {
+      editorRef.current.clear();
+    }
+  }, []);
+  
+  // Save current flow
+  const saveFlow = useCallback(() => {
+    if (!editorRef.current || !flowName.trim()) return;
+    
+    const flowData = editorRef.current.export();
+    const trimmedName = flowName.trim();
+    
+    // Count nodes in the flow (excluding empty data)
+    const nodeCount = flowData?.drawflow?.Home?.data 
+      ? Object.keys(flowData.drawflow.Home.data).length 
+      : 0;
+    
+    // Check if name changed - if so, save as new flow
+    const isNameChanged = selectedFlow && selectedFlow.name !== trimmedName;
+    
+    const newFlow = {
+      id: isNameChanged ? `flow-${Date.now()}` : (selectedFlow?.id || `flow-${Date.now()}`),
+      name: trimmedName,
+      data: flowData,
+      nodeCount: nodeCount,
+      createdAt: isNameChanged ? new Date().toISOString() : (selectedFlow?.createdAt || new Date().toISOString()),
+      updatedAt: new Date().toISOString()
+    };
+    
+    let updatedFlows;
+    if (selectedFlow && !isNameChanged) {
+      // Same name - update existing flow
+      updatedFlows = flows.map(f => f.id === selectedFlow.id ? newFlow : f);
+    } else {
+      // New flow or name changed - add as new
+      updatedFlows = [...flows, newFlow];
+    }
+    
+    setFlows(updatedFlows);
+    saveFlowsToStorage(updatedFlows);
+    setSelectedFlow(newFlow);
+    setShowSaveModal(false);
+    setFlowName('');
+  }, [flowName, flows, selectedFlow, saveFlowsToStorage]);
+  
+  // Load a saved flow
+  const loadFlow = useCallback((flow) => {
+    if (!editorRef.current || !flow) return;
+    
+    editorRef.current.clear();
+    editorRef.current.import(flow.data);
+    setSelectedFlow(flow);
+    setFlowName(flow.name);
+  }, []);
+  
+  // Delete a flow
+  const deleteFlow = useCallback((flowId) => {
+    const updatedFlows = flows.filter(f => f.id !== flowId);
+    setFlows(updatedFlows);
+    saveFlowsToStorage(updatedFlows);
+    
+    if (selectedFlow?.id === flowId) {
+      clearCanvas();
+      setSelectedFlow(null);
+      setFlowName('');
+    }
+    setShowDeleteConfirm(false);
+    setFlowToDelete(null);
+  }, [flows, selectedFlow, clearCanvas, saveFlowsToStorage]);
+  
+  // Export flow as JSON
+  const exportFlow = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const flowData = editorRef.current.export();
+    const dataStr = JSON.stringify(flowData, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `flow-${selectedFlow?.name || 'untitled'}-${Date.now()}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  }, [selectedFlow]);
+  
+  // Create new flow
+  const createNewFlow = useCallback(() => {
+    clearCanvas();
+    setSelectedFlow(null);
+    setFlowName('');
+    // Add start and end nodes by default
+    setTimeout(() => {
+      addStartNode();
+      addEndNode();
+    }, 100);
+  }, [clearCanvas, addStartNode, addEndNode]);
+  
+  // Update node visual status during execution
+  const updateNodeStatus = useCallback((nodeId, status) => {
+    if (!editorRef.current) return;
+    
+    const nodeElement = document.querySelector(`#node-${nodeId}`);
+    if (nodeElement) {
+      // Remove existing status classes
+      nodeElement.classList.remove('node-running', 'node-success', 'node-failed', 'node-pending');
+      // Add new status class
+      nodeElement.classList.add(`node-${status}`);
+    }
+  }, []);
+  
+  // Execute scenario via Browser Use API
+  const executeScenario = useCallback(async (scenarioId, nodeId, flowRunId) => {
+    // Find the scenario
+    const scenario = MOCK_DATA.scenarios.find(s => s.id === scenarioId);
+    if (!scenario) {
+      return { success: false, nodeId, scenarioId, error: 'Scenario not found' };
+    }
+    
+    const scenarioName = scenario.objective || scenarioId;
+    const executionId = `exec-flow-${flowRunId}-${scenarioId}-${Date.now()}`;
+    const currentTime = new Date().toISOString();
+    
+    setExecutionLog(prev => [...prev, {
+      time: new Date().toLocaleTimeString(),
+      type: 'info',
+      message: `🚀 Starting: ${scenarioName.substring(0, 50)}${scenarioName.length > 50 ? '...' : ''}`
+    }]);
+    
+    try {
+      // Build the task prompt from objective and steps
+      const stepsText = scenario.steps.map((s, i) => `${i + 1}. ${s.description}`).join('\n');
+      const taskPrompt = `Objective: ${scenario.objective}\n\nSteps to execute:\n${stepsText}`;
+      
+      // Create initial execution entry
+      const initialExecution = {
+        id: executionId,
+        scenarioId: scenario.id,
+        scenarioObjective: scenario.objective,
+        flowRunId: flowRunId,
+        status: 'running',
+        startTime: currentTime,
+        endTime: null,
+        duration: null,
+        progress: {
+          currentStep: 0,
+          totalSteps: scenario.steps.length,
+          percentage: 0
+        },
+        metadata: {
+          browser: 'chrome',
+          viewportWidth: 1920,
+          viewportHeight: 1080,
+          triggeredBy: 'flow-execution'
+        },
+        stepResults: scenario.steps.map(step => ({
+          stepId: step.id,
+          stepOrder: step.order,
+          stepDescription: step.description,
+          status: 'pending',
+          startTime: null,
+          endTime: null,
+          duration: null,
+          subSteps: []
+        })),
+        logs: [{
+          timestamp: currentTime,
+          level: 'info',
+          message: 'Starting Browser Use API task execution from flow...'
+        }]
+      };
+      
+      // Add to executions
+      MOCK_DATA.executions.unshift(initialExecution);
+      
+      // Update scenario status
+      const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === scenario.id);
+      if (scenarioIndex >= 0) {
+        MOCK_DATA.scenarios[scenarioIndex].status = 'running';
+        MOCK_DATA.scenarios[scenarioIndex].lastRun = {
+          executionId: executionId,
+          status: 'running',
+          date: currentTime,
+          duration: 0
+        };
+      }
+      
+      // Persist data
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      
+      setExecutionLog(prev => [...prev, {
+        time: new Date().toLocaleTimeString(),
+        type: 'info',
+        message: `📡 Creating Browser Use task...`
+      }]);
+      
+      // Create the task via Browser Use API
+      const createResult = await BrowserUseAPI.createTask(taskPrompt, {
+        maxSteps: Math.max(50, scenario.steps.length * 10),
+        highlightElements: true,
+        vision: true,
+        metadata: {
+          scenarioId: scenario.id,
+          executionId: executionId,
+          flowRunId: flowRunId
+        }
+      });
+      
+      // Store task ID for potential cancellation
+      currentTaskIdRef.current = createResult.id;
+      
+      // Update execution with task ID
+      const execIndex = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+      if (execIndex >= 0) {
+        MOCK_DATA.executions[execIndex].metadata.browserUseTaskId = createResult.id;
+        MOCK_DATA.executions[execIndex].metadata.browserUseSessionId = createResult.sessionId;
+      }
+      
+      setExecutionLog(prev => [...prev, {
+        time: new Date().toLocaleTimeString(),
+        type: 'info',
+        message: `⏳ Task created (${createResult.id.substring(0, 8)}...). Polling for completion...`
+      }]);
+      
+      // Poll for completion with progress updates
+      const finalResult = await BrowserUseAPI.pollTaskUntilComplete(
+        createResult.id,
+        (taskUpdate) => {
+          // Check if cancelled
+          if (isCancelledRef.current) {
+            throw new Error('Flow execution cancelled by user');
+          }
+          
+          const stepCount = taskUpdate.steps?.length || 0;
+          setExecutionLog(prev => {
+            // Update the last "polling" message instead of adding new ones
+            const newLogs = [...prev];
+            const lastIdx = newLogs.length - 1;
+            if (lastIdx >= 0 && newLogs[lastIdx].message.includes('browser actions')) {
+              newLogs[lastIdx] = {
+                time: new Date().toLocaleTimeString(),
+                type: 'info',
+                message: `⏳ Executing... (${stepCount} browser actions completed)`
+              };
+            } else {
+              newLogs.push({
+                time: new Date().toLocaleTimeString(),
+                type: 'info',
+                message: `⏳ Executing... (${stepCount} browser actions completed)`
+              });
+            }
+            return newLogs;
+          });
+          
+          // Update the execution in MOCK_DATA with live progress
+          const execIdx = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+          if (execIdx >= 0) {
+            const updatedExecution = BrowserUseAPI.transformTaskToExecution(
+              taskUpdate, 
+              scenario, 
+              executionId
+            );
+            updatedExecution.flowRunId = flowRunId;
+            MOCK_DATA.executions[execIdx] = updatedExecution;
+            StorageHelper.saveExecutions(MOCK_DATA.executions);
+          }
+        },
+        2000,
+        600000
+      );
+      
+      // Check if cancelled
+      if (isCancelledRef.current) {
+        return { success: false, nodeId, scenarioId, error: 'Cancelled by user', executionId };
+      }
+      
+      // Transform final result
+      const finalExecution = BrowserUseAPI.transformTaskToExecution(
+        finalResult, 
+        scenario, 
+        executionId
+      );
+      finalExecution.flowRunId = flowRunId;
+      
+      // Update MOCK_DATA with final result
+      const finalExecIndex = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+      if (finalExecIndex >= 0) {
+        MOCK_DATA.executions[finalExecIndex] = finalExecution;
+      }
+      
+      // Update scenario status
+      const finalScenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === scenario.id);
+      if (finalScenarioIndex >= 0) {
+        MOCK_DATA.scenarios[finalScenarioIndex].status = finalExecution.status;
+        MOCK_DATA.scenarios[finalScenarioIndex].lastRun = {
+          executionId: executionId,
+          status: finalExecution.status,
+          date: finalExecution.endTime || new Date().toISOString(),
+          duration: finalExecution.duration || 0
+        };
+      }
+      
+      // Persist final results
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+      
+      const success = finalExecution.status === 'passed';
+      
+      if (success) {
+        setExecutionLog(prev => [...prev, {
+          time: new Date().toLocaleTimeString(),
+          type: 'success',
+          message: `✓ Completed: ${scenarioName.substring(0, 40)}${scenarioName.length > 40 ? '...' : ''}`
+        }]);
+      } else {
+        setExecutionLog(prev => [...prev, {
+          time: new Date().toLocaleTimeString(),
+          type: 'error',
+          message: `✗ Failed: ${scenarioName.substring(0, 40)}${scenarioName.length > 40 ? '...' : ''}`
+        }]);
+      }
+      
+      currentTaskIdRef.current = null;
+      return { 
+        success, 
+        nodeId, 
+        scenarioId, 
+        executionId,
+        duration: finalExecution.duration,
+        stepsCompleted: finalResult.steps?.length || 0
+      };
+      
+    } catch (error) {
+      console.error('Browser Use API error:', error);
+      
+      // Update execution status to failed
+      const execIndex = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+      if (execIndex >= 0) {
+        MOCK_DATA.executions[execIndex].status = 'failed';
+        MOCK_DATA.executions[execIndex].endTime = new Date().toISOString();
+        MOCK_DATA.executions[execIndex].logs.push({
+          timestamp: new Date().toISOString(),
+          level: 'error',
+          message: `Browser Use API error: ${error.message}`
+        });
+        StorageHelper.saveExecutions(MOCK_DATA.executions);
+      }
+      
+      // Update scenario status
+      const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === scenario.id);
+      if (scenarioIndex >= 0) {
+        MOCK_DATA.scenarios[scenarioIndex].status = 'failed';
+        StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      }
+      
+      setExecutionLog(prev => [...prev, {
+        time: new Date().toLocaleTimeString(),
+        type: 'error',
+        message: `✗ Error: ${error.message}`
+      }]);
+      
+      currentTaskIdRef.current = null;
+      return { 
+        success: false, 
+        nodeId, 
+        scenarioId, 
+        executionId,
+        error: error.message 
+      };
+    }
+  }, []);
+  
+  // Get connected nodes from a given node
+  const getConnectedNodes = useCallback((nodeId, flowData) => {
+    const connections = [];
+    const moduleData = flowData.drawflow?.Home?.data || {};
+    
+    const node = moduleData[nodeId];
+    if (!node) return connections;
+    
+    // Check all outputs
+    Object.keys(node.outputs || {}).forEach(outputKey => {
+      const output = node.outputs[outputKey];
+      if (output.connections) {
+        output.connections.forEach(conn => {
+          connections.push({
+            nodeId: conn.node,
+            outputIndex: outputKey
+          });
+        });
+      }
+    });
+    
+    return connections;
+  }, []);
+  
+  // Find START node
+  const findStartNode = useCallback((flowData) => {
+    const moduleData = flowData.drawflow?.Home?.data || {};
+    
+    for (const [nodeId, node] of Object.entries(moduleData)) {
+      if (node.data?.type === 'start' || node.name === 'start') {
+        return nodeId;
+      }
+    }
+    return null;
+  }, []);
+  
+  // Run the flow
+  const runFlow = useCallback(async () => {
+    if (!editorRef.current || isRunning) return;
+    
+    const flowData = editorRef.current.export();
+    const moduleData = flowData.drawflow?.Home?.data || {};
+    
+    // Find START node
+    const startNodeId = findStartNode(flowData);
+    if (!startNodeId) {
+      alert('No START node found! Please add a START node to your flow.');
+      return;
+    }
+    
+    // Create a new flow run record
+    const flowRunId = `flow-run-${Date.now()}`;
+    const currentTime = new Date().toISOString();
+    
+    // Count scenario nodes
+    const scenarioNodes = Object.values(moduleData).filter(n => n.data?.scenarioId);
+    
+    const newFlowRun = {
+      id: flowRunId,
+      flowId: selectedFlow?.id || 'unsaved-flow',
+      flowName: selectedFlow?.name || 'Untitled Flow',
+      status: 'running',
+      startTime: currentTime,
+      endTime: null,
+      duration: null,
+      totalNodes: Object.keys(moduleData).length,
+      scenarioNodes: scenarioNodes.length,
+      nodeResults: {},
+      executionIds: [],
+      flowSnapshot: JSON.parse(JSON.stringify(flowData)), // Save a copy of the flow diagram at execution time
+      logs: [{
+        timestamp: currentTime,
+        level: 'info',
+        message: 'Flow execution started'
+      }]
+    };
+    
+    // Save initial flow run
+    const updatedFlowRuns = [newFlowRun, ...flowRuns];
+    saveFlowRunsToStorage(updatedFlowRuns);
+    setCurrentFlowRun(newFlowRun);
+    
+    // Reset state
+    setIsRunning(true);
+    isCancelledRef.current = false;
+    setExecutionLog([{
+      time: new Date().toLocaleTimeString(),
+      type: 'info',
+      message: `🚀 Flow execution started (${scenarioNodes.length} scenarios)`
+    }]);
+    setShowExecutionModal(true);
+    setExecutionResults({});
+    
+    // Reset all node statuses
+    Object.keys(moduleData).forEach(nodeId => {
+      updateNodeStatus(nodeId, 'pending');
+    });
+    
+    // BFS to execute nodes in order
+    const visited = new Set();
+    const queue = [startNodeId];
+    const nodeResults = {};
+    const executionIds = [];
+    let executionOrder = 0; // Track execution sequence
+    
+    // Mark start node as running then success
+    updateNodeStatus(startNodeId, 'running');
+    setCurrentExecutingNode(startNodeId);
+    await new Promise(r => setTimeout(r, 500));
+    updateNodeStatus(startNodeId, 'success');
+    nodeResults[startNodeId] = { success: true, type: 'start', executionOrder: executionOrder++ };
+    visited.add(startNodeId);
+    
+    setExecutionLog(prev => [...prev, {
+      time: new Date().toLocaleTimeString(),
+      type: 'success',
+      message: '✓ START node initialized'
+    }]);
+    
+    // Get nodes connected to START
+    const startConnections = getConnectedNodes(startNodeId, flowData);
+    startConnections.forEach(conn => queue.push(conn.nodeId));
+    
+    // Process nodes - wait for all parents before executing
+    let lastQueueSize = -1;
+    let stuckCounter = 0;
+    
+    while (queue.length > 0 && !isCancelledRef.current) {
+      // Detect if we're stuck (queue not making progress)
+      if (queue.length === lastQueueSize) {
+        stuckCounter++;
+        if (stuckCounter > queue.length * 2) {
+          // We've cycled through the queue multiple times with no progress
+          console.warn('Flow execution: Queue stuck, forcing completion');
+          break;
+        }
+      } else {
+        stuckCounter = 0;
+        lastQueueSize = queue.length;
+      }
+      
+      const currentNodeId = queue.shift();
+      
+      if (visited.has(currentNodeId)) continue;
+      
+      const node = moduleData[currentNodeId];
+      if (!node) continue;
+      
+      // Get all parent nodes (nodes with connections to this node's inputs)
+      const parentNodes = [];
+      Object.keys(node.inputs || {}).forEach(inputKey => {
+        const input = node.inputs[inputKey];
+        if (input.connections) {
+          input.connections.forEach(conn => {
+            parentNodes.push(conn.node);
+          });
+        }
+      });
+      
+      // Check if ALL parents have been visited (completed)
+      const allParentsVisited = parentNodes.every(pId => visited.has(pId));
+      
+      if (!allParentsVisited) {
+        // Not all parents are done yet - put this node back at the end of the queue
+        queue.push(currentNodeId);
+        continue;
+      }
+      
+      // Reset stuck counter since we're making progress
+      stuckCounter = 0;
+      lastQueueSize = -1;
+      
+      // Now check if all visited parents succeeded
+      const allParentsSucceeded = parentNodes.every(pId => nodeResults[pId]?.success);
+      
+      if (!allParentsSucceeded) {
+        // Skip this node if any parent failed
+        updateNodeStatus(currentNodeId, 'failed');
+        nodeResults[currentNodeId] = { success: false, skipped: true, type: node.data?.type || 'scenario', executionOrder: executionOrder++ };
+        visited.add(currentNodeId);
+        
+        setExecutionLog(prev => [...prev, {
+          time: new Date().toLocaleTimeString(),
+          type: 'warning',
+          message: `⏭ Skipped node (parent failed)`
+        }]);
+        
+        // Still add children to queue for potential condition handling
+        const connections = getConnectedNodes(currentNodeId, flowData);
+        connections.forEach(conn => {
+          if (!visited.has(conn.nodeId)) {
+            queue.push(conn.nodeId);
+          }
+        });
+        continue;
+      }
+      
+      // Mark as running
+      updateNodeStatus(currentNodeId, 'running');
+      setCurrentExecutingNode(currentNodeId);
+      
+      // Check node type
+      if (node.data?.type === 'end' || node.name === 'end') {
+        // END node
+        await new Promise(r => setTimeout(r, 500));
+        updateNodeStatus(currentNodeId, 'success');
+        nodeResults[currentNodeId] = { success: true, type: 'end', executionOrder: executionOrder++ };
+        visited.add(currentNodeId);
+        
+        setExecutionLog(prev => [...prev, {
+          time: new Date().toLocaleTimeString(),
+          type: 'success',
+          message: '✓ END node reached - Flow completed!'
+        }]);
+      } else if (node.data?.type === 'condition' || node.name === 'condition') {
+        // Condition node - evaluate based on previous scenario result
+        await new Promise(r => setTimeout(r, 500));
+        
+        // Get the last executed scenario result to determine path
+        const lastScenarioResult = Object.values(nodeResults)
+          .filter(r => r.type === 'scenario')
+          .pop();
+        const conditionResult = lastScenarioResult?.success !== false;
+        
+        updateNodeStatus(currentNodeId, 'success');
+        nodeResults[currentNodeId] = { success: true, type: 'condition', conditionResult, executionOrder: executionOrder++ };
+        visited.add(currentNodeId);
+        
+        setExecutionLog(prev => [...prev, {
+          time: new Date().toLocaleTimeString(),
+          type: 'info',
+          message: `⚡ Condition evaluated: ${conditionResult ? 'PASS path' : 'FAIL path'}`
+        }]);
+        
+        // Add connected nodes based on condition
+        const connections = getConnectedNodes(currentNodeId, flowData);
+        connections.forEach(conn => {
+          const isPassPath = conn.outputIndex === 'output_1';
+          if ((conditionResult && isPassPath) || (!conditionResult && !isPassPath)) {
+            if (!visited.has(conn.nodeId)) {
+              queue.push(conn.nodeId);
+            }
+          }
+        });
+      } else if (node.data?.scenarioId) {
+        // Scenario node - execute the scenario via Browser Use API
+        const result = await executeScenario(node.data.scenarioId, currentNodeId, flowRunId);
+        
+        if (result.executionId) {
+          executionIds.push(result.executionId);
+        }
+        
+        if (result.success) {
+          updateNodeStatus(currentNodeId, 'success');
+          nodeResults[currentNodeId] = { 
+            success: true, 
+            type: 'scenario',
+            scenarioId: node.data.scenarioId,
+            executionId: result.executionId,
+            duration: result.duration,
+            stepsCompleted: result.stepsCompleted,
+            executionOrder: executionOrder++
+          };
+        } else {
+          updateNodeStatus(currentNodeId, 'failed');
+          nodeResults[currentNodeId] = { 
+            success: false, 
+            type: 'scenario',
+            scenarioId: node.data.scenarioId,
+            executionId: result.executionId,
+            error: result.error,
+            executionOrder: executionOrder++
+          };
+        }
+        
+        visited.add(currentNodeId);
+        
+        // Update flow run in storage with progress
+        const runIdx = updatedFlowRuns.findIndex(r => r.id === flowRunId);
+        if (runIdx >= 0) {
+          updatedFlowRuns[runIdx].nodeResults = { ...nodeResults };
+          updatedFlowRuns[runIdx].executionIds = [...executionIds];
+          saveFlowRunsToStorage(updatedFlowRuns);
+        }
+        
+        // Add connected nodes to queue
+        const connections = getConnectedNodes(currentNodeId, flowData);
+        connections.forEach(conn => {
+          if (!visited.has(conn.nodeId)) {
+            queue.push(conn.nodeId);
+          }
+        });
+      } else {
+        // Unknown node type - mark as success and continue
+        await new Promise(r => setTimeout(r, 300));
+        updateNodeStatus(currentNodeId, 'success');
+        nodeResults[currentNodeId] = { success: true, type: 'unknown', executionOrder: executionOrder++ };
+        visited.add(currentNodeId);
+        
+        const connections = getConnectedNodes(currentNodeId, flowData);
+        connections.forEach(conn => {
+          if (!visited.has(conn.nodeId)) {
+            queue.push(conn.nodeId);
+          }
+        });
+      }
+    }
+    
+    // Execution complete - update flow run record
+    const endTime = new Date().toISOString();
+    // Only count scenario nodes for summary (exclude start, end, condition)
+    const scenarioResults = Object.values(nodeResults).filter(r => r.type === 'scenario');
+    const successCount = scenarioResults.filter(r => r.success && !r.skipped).length;
+    const failCount = scenarioResults.filter(r => !r.success && !r.skipped).length;
+    const skippedCount = scenarioResults.filter(r => r.skipped).length;
+    
+    const finalFlowRun = {
+      ...newFlowRun,
+      status: isCancelledRef.current ? 'cancelled' : (failCount === 0 ? 'passed' : 'failed'),
+      endTime: endTime,
+      duration: new Date(endTime) - new Date(currentTime),
+      nodeResults: nodeResults,
+      executionIds: executionIds,
+      summary: {
+        passed: successCount,
+        failed: failCount,
+        skipped: skippedCount
+      },
+      logs: [
+        ...newFlowRun.logs,
+        {
+          timestamp: endTime,
+          level: failCount === 0 ? 'info' : 'error',
+          message: `Flow execution ${isCancelledRef.current ? 'cancelled' : 'completed'}. Passed: ${successCount}, Failed: ${failCount}, Skipped: ${skippedCount}`
+        }
+      ]
+    };
+    
+    // Save final flow run
+    const finalRunIdx = updatedFlowRuns.findIndex(r => r.id === flowRunId);
+    if (finalRunIdx >= 0) {
+      updatedFlowRuns[finalRunIdx] = finalFlowRun;
+    }
+    saveFlowRunsToStorage(updatedFlowRuns);
+    setCurrentFlowRun(finalFlowRun);
+    
+    // Update state
+    setIsRunning(false);
+    setCurrentExecutingNode(null);
+    setExecutionResults(nodeResults);
+    
+    setExecutionLog(prev => [...prev, {
+      time: new Date().toLocaleTimeString(),
+      type: failCount === 0 ? 'success' : 'error',
+      message: `📊 Execution complete: ${successCount} passed, ${failCount} failed, ${skippedCount} skipped`
+    }]);
+  }, [isRunning, findStartNode, getConnectedNodes, updateNodeStatus, executeScenario, flowRuns, selectedFlow, saveFlowRunsToStorage]);
+  
+  // Cancel running flow
+  const cancelFlowRun = useCallback(async () => {
+    isCancelledRef.current = true;
+    
+    // If there's a current browser use task, stop it
+    if (currentTaskIdRef.current) {
+      try {
+        await BrowserUseAPI.stopTask(currentTaskIdRef.current);
+      } catch (e) {
+        console.error('Error stopping task:', e);
+      }
+    }
+    
+    setExecutionLog(prev => [...prev, {
+      time: new Date().toLocaleTimeString(),
+      type: 'warning',
+      message: '⚠️ Flow execution cancelled by user'
+    }]);
+  }, []);
+  
+  return (
+    <div className="page-content">
+      <div className="flow-builder-page">
+        {/* Left Panel - Scenarios List */}
+        <div className="flow-builder-sidebar">
+          <div className="flow-sidebar-header">
+            <h3><i className="fas fa-cubes"></i> Scenarios</h3>
+            <span className="scenario-count">{scenarios.length}</span>
+          </div>
+          
+          <div className="flow-sidebar-search">
+            <i className="fas fa-search"></i>
+            <input 
+              type="text" 
+              placeholder="Search scenarios..."
+              onChange={(e) => {
+                const query = e.target.value.toLowerCase();
+                setScenarios(
+                  MOCK_DATA.scenarios.filter(s => 
+                    s.objective?.toLowerCase().includes(query) ||
+                    s.tags?.some(t => t.toLowerCase().includes(query))
+                  )
+                );
+              }}
+            />
+          </div>
+          
+          <div className="flow-scenarios-list">
+            {scenarios.map(scenario => (
+              <div 
+                key={scenario.id}
+                className="flow-scenario-item"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('scenario', JSON.stringify(scenario));
+                }}
+                onClick={() => addScenarioNode(scenario)}
+              >
+                <div className={`flow-scenario-status ${scenario.status || 'pending'}`}>
+                  <i className={`fas ${
+                    scenario.status === 'passed' ? 'fa-check-circle' :
+                    scenario.status === 'failed' ? 'fa-times-circle' :
+                    scenario.status === 'running' ? 'fa-spinner fa-spin' :
+                    'fa-clock'
+                  }`}></i>
+                </div>
+                <div className="flow-scenario-info">
+                  <span className="flow-scenario-name">
+                    {scenario.objective?.substring(0, 35) || 'Untitled'}
+                    {scenario.objective?.length > 35 ? '...' : ''}
+                  </span>
+                  <span className="flow-scenario-meta">
+                    {scenario.steps?.length || 0} steps • {scenario.tags?.[0] || 'No tags'}
+                  </span>
+                </div>
+                <button className="flow-scenario-add" title="Add to canvas">
+                  <i className="fas fa-plus"></i>
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flow-sidebar-section">
+            <h4>Control Nodes</h4>
+            <div className="flow-control-nodes">
+              <button className="flow-control-btn start" onClick={addStartNode}>
+                <i className="fas fa-play-circle"></i> Start
+              </button>
+              <button className="flow-control-btn end" onClick={addEndNode}>
+                <i className="fas fa-stop-circle"></i> End
+              </button>
+              <button className="flow-control-btn condition" onClick={addConditionNode}>
+                <i className="fas fa-code-branch"></i> Condition
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Main Canvas Area */}
+        <div className="flow-builder-main">
+          <div className="flow-builder-toolbar">
+            <div className="flow-toolbar-left">
+              <button className="flow-toolbar-btn" onClick={createNewFlow}>
+                <i className="fas fa-file"></i> New
+              </button>
+              <button className="flow-toolbar-btn" onClick={() => setShowSaveModal(true)}>
+                <i className="fas fa-save"></i> Save
+              </button>
+              <button className="flow-toolbar-btn" onClick={exportFlow}>
+                <i className="fas fa-download"></i> Export
+              </button>
+              <div className="flow-toolbar-divider"></div>
+              <button className="flow-toolbar-btn" onClick={clearCanvas}>
+                <i className="fas fa-trash-alt"></i> Clear
+              </button>
+            </div>
+            
+            <div className="flow-toolbar-center">
+              {selectedFlow ? (
+                <span className="flow-current-name">
+                  <i className="fas fa-project-diagram"></i> {selectedFlow.name}
+                </span>
+              ) : (
+                <span className="flow-current-name untitled">
+                  <i className="fas fa-project-diagram"></i> Untitled Flow
+                </span>
+              )}
+            </div>
+            
+            <div className="flow-toolbar-right">
+              <button 
+                className={`flow-toolbar-btn ${showFlowRunsPanel ? 'active' : ''}`}
+                onClick={() => setShowFlowRunsPanel(!showFlowRunsPanel)}
+              >
+                <i className="fas fa-history"></i> Runs
+                {flowRuns.length > 0 && <span className="runs-badge">{flowRuns.length}</span>}
+              </button>
+              <button 
+                className={`flow-toolbar-btn primary ${isRunning ? 'running' : ''}`}
+                onClick={runFlow}
+                disabled={isRunning}
+              >
+                {isRunning ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin"></i> Running...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-play"></i> Run Flow
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+          
+          {/* Drawflow Canvas */}
+          <div 
+            ref={drawflowRef} 
+            id="drawflow"
+            className="flow-canvas"
+            onDrop={(e) => {
+              e.preventDefault();
+              const scenarioData = e.dataTransfer.getData('scenario');
+              if (scenarioData) {
+                const scenario = JSON.parse(scenarioData);
+                addScenarioNode(scenario);
+              }
+            }}
+            onDragOver={(e) => e.preventDefault()}
+          ></div>
+          
+          <div className="flow-canvas-help">
+            <span><i className="fas fa-mouse"></i> Drag scenarios to canvas</span>
+            <span><i className="fas fa-link"></i> Connect outputs to inputs</span>
+            <span><i className="fas fa-hand-paper"></i> Pan with mouse drag</span>
+            <span><i className="fas fa-search-plus"></i> Scroll to zoom</span>
+          </div>
+        </div>
+        
+        {/* Right Panel - Saved Flows */}
+        <div className="flow-builder-flows">
+          <div className="flow-panel-header">
+            <h3><i className="fas fa-folder-open"></i> Saved Flows</h3>
+          </div>
+          
+          <div className="flow-saved-list">
+            {flows.length === 0 ? (
+              <div className="flow-empty-state">
+                <i className="fas fa-project-diagram"></i>
+                <p>No saved flows yet</p>
+                <span>Create your first flow by adding scenarios and saving</span>
+              </div>
+            ) : (
+              flows.map(flow => (
+                <div 
+                  key={flow.id}
+                  className={`flow-saved-item ${selectedFlow?.id === flow.id ? 'active' : ''}`}
+                  onClick={() => loadFlow(flow)}
+                >
+                  <div className="flow-saved-icon">
+                    <i className="fas fa-project-diagram"></i>
+                  </div>
+                  <div className="flow-saved-info">
+                    <span className="flow-saved-name">{flow.name}</span>
+                    <span className="flow-saved-date">
+                      {new Date(flow.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flow-saved-actions">
+                    <button 
+                      className="flow-saved-action"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFlowToRename(flow);
+                        setNewFlowName(flow.name);
+                        setShowRenameModal(true);
+                      }}
+                      title="Rename flow"
+                    >
+                      <i className="fas fa-pen"></i>
+                    </button>
+                    <button 
+                      className="flow-saved-action delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFlowToDelete(flow);
+                        setShowDeleteConfirm(true);
+                      }}
+                      title="Delete flow"
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        
+        {/* Flow Runs Panel (Slide-out) */}
+        {showFlowRunsPanel && (
+          <div className="flow-runs-panel">
+            <div className="flow-panel-header">
+              <h3><i className="fas fa-history"></i> Flow Run History</h3>
+              <button className="panel-close-btn" onClick={() => setShowFlowRunsPanel(false)}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            
+            <div className="flow-runs-list">
+              {flowRuns.length === 0 ? (
+                <div className="flow-empty-state">
+                  <i className="fas fa-play-circle"></i>
+                  <p>No flow runs yet</p>
+                  <span>Run a flow to see execution history</span>
+                </div>
+              ) : (
+                flowRuns.map(run => (
+                  <div 
+                    key={run.id}
+                    className={`flow-run-item ${run.status} clickable`}
+                    onClick={() => {
+                      setSelectedFlowRun(run);
+                      setShowFlowRunDetail(true);
+                    }}
+                  >
+                    <div className={`flow-run-status ${run.status}`}>
+                      <i className={`fas ${
+                        run.status === 'passed' ? 'fa-check-circle' :
+                        run.status === 'failed' ? 'fa-times-circle' :
+                        run.status === 'running' ? 'fa-spinner fa-spin' :
+                        run.status === 'cancelled' ? 'fa-ban' :
+                        'fa-clock'
+                      }`}></i>
+                    </div>
+                    <div className="flow-run-info">
+                      <span className="flow-run-name">{run.flowName}</span>
+                      <span className="flow-run-meta">
+                        {new Date(run.startTime).toLocaleString()}
+                        {run.duration && ` • ${Utils.formatDuration(run.duration)}`}
+                      </span>
+                      {run.summary && (
+                        <span className="flow-run-summary">
+                          <span className="summary-passed">{run.summary.passed} passed</span>
+                          {run.summary.failed > 0 && <span className="summary-failed">{run.summary.failed} failed</span>}
+                          {run.summary.skipped > 0 && <span className="summary-skipped">{run.summary.skipped} skipped</span>}
+                        </span>
+                      )}
+                    </div>
+                    <button 
+                      className="flow-run-delete"
+                      onClick={() => {
+                        const updatedRuns = flowRuns.filter(r => r.id !== run.id);
+                        saveFlowRunsToStorage(updatedRuns);
+                      }}
+                      title="Delete run"
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {flowRuns.length > 0 && (
+              <div className="flow-runs-footer">
+                <button 
+                  className="btn-text-danger"
+                  onClick={() => {
+                    if (confirm('Clear all flow run history?')) {
+                      saveFlowRunsToStorage([]);
+                    }
+                  }}
+                >
+                  <i className="fas fa-trash-alt"></i> Clear History
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Save Modal */}
+        {showSaveModal && (
+          <div className="flow-modal-overlay" onClick={() => setShowSaveModal(false)}>
+            <div className="flow-modal" onClick={e => e.stopPropagation()}>
+              <div className="flow-modal-header">
+                <h3><i className="fas fa-save"></i> Save Flow</h3>
+                <button onClick={() => setShowSaveModal(false)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="flow-modal-body">
+                <div className="form-group">
+                  <label>Flow Name</label>
+                  <input 
+                    type="text"
+                    value={flowName}
+                    onChange={(e) => setFlowName(e.target.value)}
+                    placeholder="Enter flow name..."
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && flowName.trim()) {
+                        saveFlow();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flow-modal-footer">
+                <button className="btn-secondary" onClick={() => setShowSaveModal(false)}>
+                  Cancel
+                </button>
+                <button 
+                  className="btn-primary" 
+                  onClick={saveFlow}
+                  disabled={!flowName.trim()}
+                >
+                  Save Flow
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && flowToDelete && (
+          <div className="flow-modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
+            <div className="flow-modal" onClick={e => e.stopPropagation()}>
+              <div className="flow-modal-header">
+                <h3><i className="fas fa-exclamation-triangle"></i> Delete Flow</h3>
+                <button onClick={() => setShowDeleteConfirm(false)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="flow-modal-body">
+                <p>Are you sure you want to delete "<strong>{flowToDelete.name}</strong>"?</p>
+                <p className="text-muted">This action cannot be undone.</p>
+              </div>
+              <div className="flow-modal-footer">
+                <button className="btn-secondary" onClick={() => setShowDeleteConfirm(false)}>
+                  Cancel
+                </button>
+                <button 
+                  className="btn-danger" 
+                  onClick={() => deleteFlow(flowToDelete.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Rename Flow Modal */}
+        {showRenameModal && flowToRename && (
+          <div className="flow-modal-overlay" onClick={() => setShowRenameModal(false)}>
+            <div className="flow-modal" onClick={e => e.stopPropagation()}>
+              <div className="flow-modal-header">
+                <h3><i className="fas fa-pen"></i> Rename Flow</h3>
+                <button onClick={() => setShowRenameModal(false)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="flow-modal-body">
+                <div className="form-group">
+                  <label>Flow Name</label>
+                  <input
+                    type="text"
+                    value={newFlowName}
+                    onChange={(e) => setNewFlowName(e.target.value)}
+                    placeholder="Enter new flow name"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newFlowName.trim() && newFlowName.trim() !== flowToRename.name) {
+                        const updatedFlows = flows.map(f => 
+                          f.id === flowToRename.id 
+                            ? { ...f, name: newFlowName.trim(), updatedAt: new Date().toISOString() }
+                            : f
+                        );
+                        saveFlowsToStorage(updatedFlows);
+                        setFlows(updatedFlows);
+                        if (selectedFlow?.id === flowToRename.id) {
+                          setSelectedFlow({ ...selectedFlow, name: newFlowName.trim() });
+                        }
+                        setShowRenameModal(false);
+                        setFlowToRename(null);
+                        setNewFlowName('');
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flow-modal-footer">
+                <button className="btn-secondary" onClick={() => {
+                  setShowRenameModal(false);
+                  setFlowToRename(null);
+                  setNewFlowName('');
+                }}>
+                  Cancel
+                </button>
+                <button 
+                  className="btn-primary" 
+                  disabled={!newFlowName.trim() || newFlowName.trim() === flowToRename.name}
+                  onClick={() => {
+                    const updatedFlows = flows.map(f => 
+                      f.id === flowToRename.id 
+                        ? { ...f, name: newFlowName.trim(), updatedAt: new Date().toISOString() }
+                        : f
+                    );
+                    saveFlowsToStorage(updatedFlows);
+                    setFlows(updatedFlows);
+                    if (selectedFlow?.id === flowToRename.id) {
+                      setSelectedFlow({ ...selectedFlow, name: newFlowName.trim() });
+                    }
+                    setShowRenameModal(false);
+                    setFlowToRename(null);
+                    setNewFlowName('');
+                  }}
+                >
+                  Rename
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Execution Modal */}
+        {showExecutionModal && (
+          <div className="flow-modal-overlay execution-modal-overlay" onClick={() => setShowExecutionModal(false)}>
+            <div className="flow-modal execution-modal" onClick={e => e.stopPropagation()}>
+              <div className="flow-modal-header">
+                <h3>
+                  {isRunning ? (
+                    <><i className="fas fa-spinner fa-spin"></i> Running Flow</>
+                  ) : (
+                    <><i className="fas fa-flag-checkered"></i> Execution Complete</>
+                  )}
+                </h3>
+                <button onClick={() => setShowExecutionModal(false)} title="Minimize (flow will continue running)">
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="flow-modal-body execution-body">
+                <div className="execution-status-bar">
+                  {isRunning ? (
+                    <div className="execution-status running">
+                      <div className="status-indicator pulse"></div>
+                      <span>Executing flow...</span>
+                    </div>
+                  ) : (
+                    <div className={`execution-status ${Object.values(executionResults).every(r => r.success) ? 'success' : 'partial'}`}>
+                      <div className="status-indicator"></div>
+                      <span>
+                        {Object.values(executionResults).every(r => r.success) 
+                          ? 'All nodes executed successfully!' 
+                          : 'Execution completed with some failures'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="execution-log">
+                  <div className="execution-log-header">
+                    <i className="fas fa-terminal"></i> Execution Log
+                  </div>
+                  <div className="execution-log-content">
+                    {executionLog.map((log, idx) => (
+                      <div key={idx} className={`log-entry ${log.type}`}>
+                        <span className="log-time">{log.time}</span>
+                        <span className="log-message">{log.message}</span>
+                      </div>
+                    ))}
+                    {isRunning && (
+                      <div className="log-entry info">
+                        <span className="log-time">{new Date().toLocaleTimeString()}</span>
+                        <span className="log-message"><i className="fas fa-circle-notch fa-spin"></i> Processing...</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {!isRunning && (
+                  <div className="execution-summary">
+                    <div className="summary-item success">
+                      <i className="fas fa-check-circle"></i>
+                      <span>{Object.values(executionResults).filter(r => r.success && !r.skipped).length} Passed</span>
+                    </div>
+                    <div className="summary-item failed">
+                      <i className="fas fa-times-circle"></i>
+                      <span>{Object.values(executionResults).filter(r => !r.success).length} Failed</span>
+                    </div>
+                    <div className="summary-item skipped">
+                      <i className="fas fa-forward"></i>
+                      <span>{Object.values(executionResults).filter(r => r.skipped).length} Skipped</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flow-modal-footer">
+                {isRunning ? (
+                  <>
+                    <button className="btn-secondary" onClick={() => setShowExecutionModal(false)}>
+                      <i className="fas fa-window-minimize"></i> Run in Background
+                    </button>
+                    <button className="btn-danger" onClick={cancelFlowRun}>
+                      <i className="fas fa-stop"></i> Cancel Execution
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn-secondary" onClick={() => setShowExecutionModal(false)}>
+                      Close
+                    </button>
+                    <button className="btn-primary" onClick={runFlow}>
+                      <i className="fas fa-redo"></i> Run Again
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Flow Run Detail Modal */}
+        {showFlowRunDetail && selectedFlowRun && (() => {
+          // Check if this is the currently running flow
+          const isThisRunning = isRunning && currentFlowRun?.id === selectedFlowRun.id;
+          // Use live data if running, otherwise use stored data
+          const displayRun = isThisRunning ? { ...selectedFlowRun, ...currentFlowRun, nodeResults: executionResults } : selectedFlowRun;
+          const displayLogs = isThisRunning ? executionLog : (selectedFlowRun.logs || []);
+          
+          return (
+          <div className="flow-modal-overlay" onClick={() => setShowFlowRunDetail(false)}>
+            <div className="flow-modal flow-run-detail-modal" onClick={e => e.stopPropagation()}>
+              <div className="flow-modal-header">
+                <h3>
+                  {isThisRunning ? (
+                    <><i className="fas fa-spinner fa-spin"></i> Flow Running</>
+                  ) : (
+                    <>
+                      <i className={`fas ${
+                        selectedFlowRun.status === 'passed' ? 'fa-check-circle' :
+                        selectedFlowRun.status === 'failed' ? 'fa-times-circle' :
+                        selectedFlowRun.status === 'cancelled' ? 'fa-ban' :
+                        'fa-clock'
+                      }`}></i>
+                      Flow Run Details
+                    </>
+                  )}
+                </h3>
+                <button onClick={() => setShowFlowRunDetail(false)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="flow-modal-body">
+                {/* Flow Run Header Info */}
+                <div className={`flow-run-detail-header ${isThisRunning ? 'running' : ''}`}>
+                  <div className="flow-run-detail-title">
+                    <h4>{selectedFlowRun.flowName}</h4>
+                    <span className={`status-badge ${isThisRunning ? 'running' : selectedFlowRun.status}`}>
+                      {isThisRunning ? 'Running' :
+                       selectedFlowRun.status === 'passed' ? 'Passed' : 
+                       selectedFlowRun.status === 'failed' ? 'Failed' :
+                       selectedFlowRun.status === 'cancelled' ? 'Cancelled' : 'Pending'}
+                    </span>
+                  </div>
+                  <div className="flow-run-detail-meta">
+                    <span><i className="fas fa-calendar"></i> {new Date(selectedFlowRun.startTime).toLocaleString()}</span>
+                    {!isThisRunning && selectedFlowRun.endTime && (
+                      <span><i className="fas fa-clock"></i> Duration: {Utils.formatDuration(selectedFlowRun.duration)}</span>
+                    )}
+                    {isThisRunning && (
+                      <span><i className="fas fa-sync fa-spin"></i> In progress...</span>
+                    )}
+                    {!isThisRunning && selectedFlowRun.summary && (
+                      <span>
+                        <i className="fas fa-tasks"></i> 
+                        {selectedFlowRun.summary.passed + selectedFlowRun.summary.failed + selectedFlowRun.summary.skipped} scenarios
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Summary Cards - only show when completed */}
+                {!isThisRunning && selectedFlowRun.summary && (
+                  <div className="flow-run-summary-cards">
+                    <div className="summary-card passed">
+                      <div className="summary-card-icon">
+                        <i className="fas fa-check-circle"></i>
+                      </div>
+                      <div className="summary-card-content">
+                        <span className="summary-card-value">{selectedFlowRun.summary.passed}</span>
+                        <span className="summary-card-label">Passed</span>
+                      </div>
+                    </div>
+                    <div className="summary-card failed">
+                      <div className="summary-card-icon">
+                        <i className="fas fa-times-circle"></i>
+                      </div>
+                      <div className="summary-card-content">
+                        <span className="summary-card-value">{selectedFlowRun.summary.failed}</span>
+                        <span className="summary-card-label">Failed</span>
+                      </div>
+                    </div>
+                    <div className="summary-card skipped">
+                      <div className="summary-card-icon">
+                        <i className="fas fa-forward"></i>
+                      </div>
+                      <div className="summary-card-content">
+                        <span className="summary-card-value">{selectedFlowRun.summary.skipped}</span>
+                        <span className="summary-card-label">Skipped</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Flow Diagram Snapshot */}
+                {displayRun.flowSnapshot && (
+                  <div className="flow-snapshot-section">
+                    <div className="flow-snapshot-header">
+                      <h5><i className="fas fa-project-diagram"></i> Flow Diagram</h5>
+                      <button 
+                        className="btn-icon-sm"
+                        onClick={() => setShowFullScreenSnapshot(true)}
+                        title="View full screen"
+                      >
+                        <i className="fas fa-expand"></i>
+                      </button>
+                    </div>
+                    <div className="flow-snapshot-preview">
+                      <FlowSnapshotViewer 
+                        flowSnapshot={displayRun.flowSnapshot}
+                        nodeResults={displayRun.nodeResults}
+                        compact={true}
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                {/* Node Results */}
+                <div className="flow-run-nodes-section">
+                  <h5><i className="fas fa-project-diagram"></i> Node Execution Results</h5>
+                  <div className="flow-run-nodes-list">
+                    {displayRun.nodeResults && Object.keys(displayRun.nodeResults).length > 0 ? (
+                      Object.entries(displayRun.nodeResults)
+                        .sort((a, b) => (a[1].executionOrder ?? 0) - (b[1].executionOrder ?? 0))
+                        .map(([nodeId, node], idx) => {
+                        // Get scenario name if it's a scenario node
+                        const scenarioName = node.scenarioId 
+                          ? (MOCK_DATA.scenarios.find(s => s.id === node.scenarioId)?.objective || `Scenario ${node.scenarioId}`)
+                          : null;
+                        
+                        // Determine status class
+                        const statusClass = node.skipped ? 'skipped' : (node.success ? 'success' : 'failed');
+                        const isControlNode = ['start', 'end', 'condition'].includes(node.type);
+                        
+                        return (
+                          <div key={nodeId} className={`flow-run-node-item ${statusClass} ${isControlNode ? 'control-node' : ''}`}>
+                            <div className="node-item-order">{idx + 1}</div>
+                            <div className={`node-item-status ${isControlNode ? 'control' : statusClass}`}>
+                              <i className={`fas ${
+                                isControlNode ? (
+                                  node.type === 'start' ? 'fa-play-circle' :
+                                  node.type === 'end' ? 'fa-stop-circle' :
+                                  'fa-code-branch'
+                                ) : (
+                                  node.skipped ? 'fa-forward' :
+                                  node.success ? 'fa-check-circle' :
+                                  'fa-times-circle'
+                                )
+                              }`}></i>
+                            </div>
+                            <div className="node-item-info">
+                              <span className="node-item-name">
+                                {node.type === 'scenario' ? (
+                                  <>
+                                    <i className="fas fa-file-alt"></i> {scenarioName}
+                                  </>
+                                ) : node.type === 'start' ? (
+                                  <>
+                                    <i className="fas fa-play-circle"></i> Start
+                                  </>
+                                ) : node.type === 'end' ? (
+                                  <>
+                                    <i className="fas fa-stop-circle"></i> End
+                                  </>
+                                ) : node.type === 'condition' ? (
+                                  <>
+                                    <i className="fas fa-code-branch"></i> Condition
+                                    {node.conditionResult !== undefined && (
+                                      <span className={`condition-result ${node.conditionResult ? 'pass' : 'fail'}`}>
+                                        ({node.conditionResult ? 'Pass path' : 'Fail path'})
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className="fas fa-cube"></i> {node.type || 'Node'}
+                                  </>
+                                )}
+                              </span>
+                              {node.duration && (
+                                <span className="node-item-duration">
+                                  {Utils.formatDuration(node.duration)}
+                                </span>
+                              )}
+                              {node.stepsCompleted && (
+                                <span className="node-item-steps">
+                                  {node.stepsCompleted} steps completed
+                                </span>
+                              )}
+                              {node.error && (
+                                <span className="node-item-error">{node.error}</span>
+                              )}
+                              {node.skipped && (
+                                <span className="node-item-skipped">Skipped (parent failed)</span>
+                              )}
+                            </div>
+                            {node.executionId && node.scenarioId && (
+                              <button 
+                                className="node-item-link"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowFlowRunDetail(false);
+                                  setShowFlowRunsPanel(false);
+                                  onViewExecution(node.scenarioId, node.executionId);
+                                }}
+                                title="View execution details"
+                              >
+                                <i className="fas fa-external-link-alt"></i>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="flow-run-no-nodes">
+                        <i className="fas fa-info-circle"></i>
+                        <span>No node execution data available</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Execution Logs */}
+                {displayLogs && displayLogs.length > 0 && (
+                  <div className="flow-run-logs-section">
+                    <h5><i className="fas fa-terminal"></i> Execution Logs</h5>
+                    <div className={`flow-run-logs ${isThisRunning ? 'live' : ''}`}>
+                      {displayLogs.map((log, idx) => (
+                        <div key={idx} className={`log-entry ${log.type || log.level}`}>
+                          <span className="log-time">
+                            {log.time || new Date(log.timestamp).toLocaleTimeString()}
+                          </span>
+                          <span className="log-message">{log.message}</span>
+                        </div>
+                      ))}
+                      {isThisRunning && (
+                        <div className="log-entry info">
+                          <span className="log-time">{new Date().toLocaleTimeString()}</span>
+                          <span className="log-message"><i className="fas fa-circle-notch fa-spin"></i> Processing...</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flow-modal-footer">
+                <button className="btn-secondary" onClick={() => setShowFlowRunDetail(false)}>
+                  Close
+                </button>
+                {isThisRunning ? (
+                  <button className="btn-danger" onClick={() => {
+                    cancelFlowRun();
+                    setShowFlowRunDetail(false);
+                  }}>
+                    <i className="fas fa-stop"></i> Cancel Execution
+                  </button>
+                ) : (
+                  <button 
+                    className="btn-danger"
+                    onClick={() => {
+                      const updatedRuns = flowRuns.filter(r => r.id !== selectedFlowRun.id);
+                      saveFlowRunsToStorage(updatedRuns);
+                      setShowFlowRunDetail(false);
+                      setSelectedFlowRun(null);
+                    }}
+                  >
+                    <i className="fas fa-trash"></i> Delete Run
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+        
+        {/* Full Screen Flow Snapshot Modal */}
+        {showFullScreenSnapshot && selectedFlowRun && (
+          <div className="flow-modal-overlay fullscreen" onClick={() => setShowFullScreenSnapshot(false)}>
+            <div className="flow-snapshot-fullscreen-modal" onClick={e => e.stopPropagation()}>
+              <div className="flow-modal-header">
+                <h3>
+                  <i className="fas fa-project-diagram"></i>
+                  Flow Diagram - {selectedFlowRun.flowName}
+                </h3>
+                <button onClick={() => setShowFullScreenSnapshot(false)}>
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="flow-snapshot-fullscreen-body">
+                <FlowSnapshotViewer 
+                  flowSnapshot={selectedFlowRun.flowSnapshot || (currentFlowRun?.flowSnapshot)}
+                  nodeResults={selectedFlowRun.nodeResults || (currentFlowRun?.nodeResults) || {}}
+                  compact={false}
+                />
+              </div>
+              <div className="flow-snapshot-fullscreen-footer">
+                <div className="snapshot-legend">
+                  <span className="legend-item success"><i className="fas fa-check-circle"></i> Passed</span>
+                  <span className="legend-item failed"><i className="fas fa-times-circle"></i> Failed</span>
+                  <span className="legend-item skipped"><i className="fas fa-forward"></i> Skipped</span>
+                  <span className="legend-item control"><i className="fas fa-play-circle"></i> Control Node</span>
+                </div>
+                <button className="btn-secondary" onClick={() => setShowFullScreenSnapshot(false)}>
+                  <i className="fas fa-compress"></i> Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ===== Main App Component =====
 const App = () => {
   const [activePage, setActivePage] = useState('dashboard');
@@ -3418,16 +7166,38 @@ const App = () => {
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
   const [selectedStepId, setSelectedStepId] = useState(null);
+  const [editingScenario, setEditingScenario] = useState(null); // For edit mode
+  const [initialFolderId, setInitialFolderId] = useState(null); // For create scenario with folder
   const [refreshKey, setRefreshKey] = useState(0); // Used to trigger re-renders after data changes
+  const [globalSearchQuery, setGlobalSearchQuery] = useState(''); // Global search state
+  
+  // Flows and Flow Runs state for dashboard display
+  const [savedFlows, setSavedFlows] = useState([]);
+  const [flowRuns, setFlowRuns] = useState([]);
   
   // Load data from localStorage on initial mount
   useEffect(() => {
+    // Check if data version changed (folder structure update)
+    StorageHelper.checkDataVersion();
+    
     const savedScenarios = StorageHelper.loadScenarios();
     const savedExecutions = StorageHelper.loadExecutions();
     const savedStats = StorageHelper.loadStats();
+    const savedFolders = StorageHelper.loadFolders();
+    const savedVariables = StorageHelper.loadVariables();
     
     let dataModified = false;
     let runningCount = 0;
+    
+    // Load folders from localStorage or use defaults
+    if (savedFolders && savedFolders.length > 0) {
+      MOCK_DATA.folders = savedFolders;
+    }
+    
+    // Load variables from localStorage or use defaults
+    if (savedVariables && savedVariables.length > 0) {
+      MOCK_DATA.variables = savedVariables;
+    }
     
     if (savedScenarios && savedScenarios.length > 0) {
       // Handle interrupted 'running' scenarios - mark them as 'interrupted'
@@ -3440,8 +7210,26 @@ const App = () => {
           }
           dataModified = true;
         }
+        // Ensure scenario has a folderId - assign to root folder if missing
+        if (!scenario.folderId) {
+          const rootFolder = MOCK_DATA.folders.find(f => f.isDefault);
+          if (rootFolder) {
+            scenario.folderId = rootFolder.id;
+            dataModified = true;
+          }
+        }
       });
       MOCK_DATA.scenarios = savedScenarios;
+    } else {
+      // Ensure default scenarios have folderIds
+      MOCK_DATA.scenarios.forEach(scenario => {
+        if (!scenario.folderId) {
+          const rootFolder = MOCK_DATA.folders.find(f => f.isDefault);
+          if (rootFolder) {
+            scenario.folderId = rootFolder.id;
+          }
+        }
+      });
     }
     
     if (savedExecutions && savedExecutions.length > 0) {
@@ -3485,6 +7273,23 @@ const App = () => {
       StorageHelper.saveScenarios(MOCK_DATA.scenarios);
       StorageHelper.saveExecutions(MOCK_DATA.executions);
       StorageHelper.saveStats(MOCK_DATA.stats);
+      StorageHelper.saveFolders(MOCK_DATA.folders);
+    }
+    
+    // Load saved flows from localStorage
+    try {
+      const savedFlowsData = localStorage.getItem('trinamix_flows');
+      if (savedFlowsData) {
+        setSavedFlows(JSON.parse(savedFlowsData));
+      }
+    } catch (e) {
+      console.error('Error loading flows:', e);
+    }
+    
+    // Load flow runs from localStorage
+    const loadedFlowRuns = StorageHelper.loadFlowRuns();
+    if (loadedFlowRuns) {
+      setFlowRuns(loadedFlowRuns);
     }
     
     // Trigger re-render after loading data
@@ -3496,7 +7301,68 @@ const App = () => {
     StorageHelper.saveScenarios(MOCK_DATA.scenarios);
     StorageHelper.saveExecutions(MOCK_DATA.executions);
     StorageHelper.saveStats(MOCK_DATA.stats);
+    StorageHelper.saveFolders(MOCK_DATA.folders);
+    StorageHelper.saveVariables(MOCK_DATA.variables);
   }, []);
+  
+  // Compute search results based on globalSearchQuery
+  const searchResults = useMemo(() => {
+    if (!globalSearchQuery || globalSearchQuery.trim().length === 0) {
+      return { scenarios: [], executions: [] };
+    }
+    
+    const query = globalSearchQuery.toLowerCase().trim();
+    
+    // Search scenarios by name, description, or steps
+    const matchingScenarios = MOCK_DATA.scenarios.filter(scenario => {
+      const nameMatch = scenario.name?.toLowerCase().includes(query);
+      const descMatch = scenario.description?.toLowerCase().includes(query);
+      const objectiveMatch = scenario.objective?.toLowerCase().includes(query);
+      const stepsMatch = scenario.steps?.some(step => {
+        // Steps can be strings or objects with a description property
+        if (typeof step === 'string') {
+          return step.toLowerCase().includes(query);
+        }
+        return step.description?.toLowerCase().includes(query);
+      });
+      return nameMatch || descMatch || objectiveMatch || stepsMatch;
+    });
+    
+    // Search executions by scenario name or status
+    const matchingExecutions = MOCK_DATA.executions.filter(execution => {
+      const scenario = MOCK_DATA.scenarios.find(s => s.id === execution.scenarioId);
+      const scenarioName = scenario?.name || '';
+      const nameMatch = scenarioName.toLowerCase().includes(query);
+      const statusMatch = execution.status?.toLowerCase().includes(query);
+      return nameMatch || statusMatch;
+    }).map(execution => {
+      const scenario = MOCK_DATA.scenarios.find(s => s.id === execution.scenarioId);
+      return {
+        ...execution,
+        scenarioName: scenario?.name || 'Unknown Scenario'
+      };
+    });
+    
+    return {
+      scenarios: matchingScenarios,
+      executions: matchingExecutions
+    };
+  }, [globalSearchQuery, refreshKey]);
+  
+  // Handle search result selection
+  const handleSelectSearchResult = useCallback((type, id, executionId = null) => {
+    setGlobalSearchQuery('');
+    setPreviousPage(activePage);
+    if (type === 'scenario') {
+      setSelectedScenarioId(id);
+      setSelectedExecutionId(null);
+      setActivePage('scenario-detail');
+    } else if (type === 'execution') {
+      setSelectedScenarioId(id);
+      setSelectedExecutionId(executionId);
+      setActivePage('scenario-detail');
+    }
+  }, [activePage]);
   
   // Handle scenario deletion
   const handleDeleteScenario = useCallback((scenarioId) => {
@@ -3533,12 +7399,18 @@ const App = () => {
     setRefreshKey(prev => prev + 1);
   }, [persistData]);
   
-  const handleNavigate = (page) => {
+  const handleNavigate = (page, options = {}) => {
     setPreviousPage(activePage);
     setActivePage(page);
     setSelectedScenarioId(null);
     setSelectedExecutionId(null);
     setSelectedStepId(null);
+    // Set initial folder ID if provided (for create-scenario page)
+    if (options.folderId !== undefined) {
+      setInitialFolderId(options.folderId);
+    } else {
+      setInitialFolderId(null);
+    }
   };
   
   const handleViewScenario = (scenarioId) => {
@@ -3561,6 +7433,20 @@ const App = () => {
     setSelectedExecutionId(executionId);
     setSelectedStepId(stepId);
     setActivePage('step-detail');
+  };
+  
+  const handleEditScenario = (scenario) => {
+    setPreviousPage(activePage);
+    setEditingScenario(scenario);
+    setActivePage('create-scenario');
+  };
+  
+  // Navigate to flow builder and open a specific flow run
+  const [targetFlowRunId, setTargetFlowRunId] = useState(null);
+  
+  const handleViewFlowRun = (flowRunId) => {
+    setTargetFlowRunId(flowRunId);
+    setActivePage('flow-builder');
   };
   
   // Determine where to go back to from scenario-detail
@@ -3590,7 +7476,11 @@ const App = () => {
       case 'history':
         return ['Home', 'Run History'];
       case 'create-scenario':
-        return ['Home', 'New Scenario'];
+        return editingScenario ? ['Home', 'Scenarios', 'Edit Scenario'] : ['Home', 'New Scenario'];
+      case 'flow-builder':
+        return ['Home', 'Flow Builder'];
+      case 'variables':
+        return ['Home', 'Settings', 'Variables'];
       default:
         return ['Home'];
     }
@@ -3605,6 +7495,9 @@ const App = () => {
             onNavigate={handleNavigate}
             onViewScenario={handleViewScenario}
             onViewExecution={handleViewExecution}
+            savedFlows={savedFlows}
+            flowRuns={flowRuns}
+            onViewFlowRun={handleViewFlowRun}
           />
         );
       case 'scenarios':
@@ -3623,6 +7516,8 @@ const App = () => {
             executionId={selectedExecutionId}
             onBack={handleBackFromScenarioDetail}
             onViewStepDetail={handleViewStepDetail}
+            onEditScenario={handleEditScenario}
+            onViewFlowRun={handleViewFlowRun}
           />
         );
       case 'step-detail':
@@ -3641,18 +7536,44 @@ const App = () => {
         return (
           <HistoryPage 
             onViewExecution={handleViewExecution}
+            onViewFlowRun={handleViewFlowRun}
           />
         );
       case 'create-scenario':
         return (
           <CreateScenarioPage 
-            onBack={() => handleNavigate('scenarios')}
-            onNavigate={handleNavigate}
+            onBack={() => {
+              setEditingScenario(null);
+              setInitialFolderId(null);
+              handleNavigate('scenarios');
+            }}
+            onNavigate={(page) => {
+              setEditingScenario(null);
+              setInitialFolderId(null);
+              handleNavigate(page);
+            }}
             onScenarioCreated={handleScenarioCreated}
+            editingScenario={editingScenario}
+            initialFolderId={initialFolderId}
+          />
+        );
+      case 'flow-builder':
+        return (
+          <FlowBuilderPage 
+            onNavigate={handleNavigate}
+            onViewExecution={handleViewExecution}
+            targetFlowRunId={targetFlowRunId}
+            onClearTargetFlowRun={() => setTargetFlowRunId(null)}
+          />
+        );
+      case 'variables':
+        return (
+          <VariablesPage 
+            onVariablesChange={() => setRefreshKey(prev => prev + 1)}
           />
         );
       default:
-        return <Dashboard onNavigate={handleNavigate} />;
+        return <Dashboard onNavigate={handleNavigate} savedFlows={savedFlows} flowRuns={flowRuns} onViewFlowRun={handleViewFlowRun} />;
     }
   };
   
@@ -3660,7 +7581,14 @@ const App = () => {
     <div className="app-container">
       <Sidebar activePage={activePage} onNavigate={handleNavigate} />
       <main className="main-content">
-        <Header breadcrumb={getBreadcrumb()} />
+        <Header 
+          breadcrumb={getBreadcrumb()} 
+          searchQuery={globalSearchQuery}
+          onSearchChange={setGlobalSearchQuery}
+          searchResults={searchResults}
+          onSelectSearchResult={handleSelectSearchResult}
+          onClearSearch={() => setGlobalSearchQuery('')}
+        />
         {renderPage()}
       </main>
     </div>
