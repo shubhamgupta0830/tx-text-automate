@@ -132,8 +132,8 @@ const BrowserUseAPI = {
   createTask: async (task, options = {}) => {
     const payload = {
       task: task,
-      llm: options.llm || 'gpt-4o',
-      maxSteps: options.maxSteps || 50,
+      llm: options.llm || 'gemini-flash-latest',
+      maxSteps: options.maxSteps || 100,
       highlightElements: options.highlightElements ?? true,
       vision: options.vision ?? true,
       ...(options.startUrl && { startUrl: options.startUrl }),

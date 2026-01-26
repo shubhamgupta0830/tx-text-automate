@@ -1,5 +1,6 @@
 /**
  * Test Automation UI v2 - Main React Application
+ * Version: 2.1.0 - Added Agent View Refresh Button
  * 
  * HIERARCHY:
  * - Scenario/Objective (Top Level)
@@ -872,7 +873,7 @@ const ScenarioCard = ({ scenario, onClick, onDelete }) => {
         </div>
         <div className="scenario-card-actions">
           <div className="scenario-tags">
-            {scenario.tags?.slice(0, 2).map(tag => (
+            {scenario.tags?.filter(tag => tag !== 'custom').slice(0, 2).map(tag => (
               <span key={tag} className="tag">{tag}</span>
             ))}
           </div>
@@ -1568,7 +1569,7 @@ const ScenariosPage = ({ onViewScenario, onNavigate, onDeleteScenario }) => {
 };
 
 // ===== Scenario Detail Page =====
-const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail, onEditScenario, onViewFlowRun }) => {
+const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail, onEditScenario, onCloneScenario, onViewFlowRun }) => {
   const scenario = MOCK_DATA.scenarios.find(s => s.id === scenarioId);
   // Find execution by executionId if provided, otherwise find by scenarioId
   const execution = executionId 
@@ -1582,6 +1583,15 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
   const [, forceUpdate] = useState(0);
   const currentTaskIdRef = React.useRef(null);
   const isCancelledRef = React.useRef(false);
+  const [isEditingObjective, setIsEditingObjective] = useState(false);
+  const [editedObjective, setEditedObjective] = useState(scenario.objective);
+  const [showTaskOutputModal, setShowTaskOutputModal] = useState(false);
+  const [showTaskInputModal, setShowTaskInputModal] = useState(false);
+  
+  // Scroll to top when scenario page loads
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [scenarioId, executionId]);
   
   if (!scenario) {
     return (
@@ -1693,6 +1703,16 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
         MOCK_DATA.executions[execIndex].metadata.browserUseSessionId = createResult.sessionId;
       }
       
+      // Store active task info for background tracking
+      const activeTasks = StorageHelper.loadActiveTasks();
+      activeTasks.push({
+        taskId: createResult.id,
+        scenarioId: scenario.id,
+        executionId: newExecutionId,
+        startTime: new Date().toISOString()
+      });
+      StorageHelper.saveActiveTasks(activeTasks);
+      
       // Poll for completion with progress updates
       const finalResult = await BrowserUseAPI.pollTaskUntilComplete(
         createResult.id,
@@ -1775,6 +1795,11 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       StorageHelper.saveExecutions(MOCK_DATA.executions);
       StorageHelper.saveStats(MOCK_DATA.stats);
       
+      // Remove from active tasks
+      if (currentTaskIdRef.current) {
+        StorageHelper.removeActiveTask(currentTaskIdRef.current);
+      }
+      
       setIsRunning(false);
       setRunStatus(null);
       currentTaskIdRef.current = null;
@@ -1821,6 +1846,11 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       StorageHelper.saveScenarios(MOCK_DATA.scenarios);
       StorageHelper.saveExecutions(MOCK_DATA.executions);
       StorageHelper.saveStats(MOCK_DATA.stats);
+      
+      // Remove from active tasks
+      if (currentTaskIdRef.current) {
+        StorageHelper.removeActiveTask(currentTaskIdRef.current);
+      }
       
       setIsRunning(false);
       setRunStatus(null);
@@ -1878,6 +1908,11 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
     StorageHelper.saveExecutions(MOCK_DATA.executions);
     StorageHelper.saveStats(MOCK_DATA.stats);
     
+    // Remove from active tasks
+    if (currentTaskIdRef.current) {
+      StorageHelper.removeActiveTask(currentTaskIdRef.current);
+    }
+    
     setIsRunning(false);
     setIsCancelling(false);
     setRunStatus(null);
@@ -1885,6 +1920,29 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
     forceUpdate(n => n + 1);
     
     alert('⚠️ Run cancelled successfully');
+  };
+  
+  // Function to save the edited objective
+  const handleSaveObjective = () => {
+    if (!editedObjective.trim()) {
+      alert('Objective cannot be empty');
+      return;
+    }
+    
+    const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === scenario.id);
+    if (scenarioIndex >= 0) {
+      MOCK_DATA.scenarios[scenarioIndex].objective = editedObjective;
+      MOCK_DATA.scenarios[scenarioIndex].updatedAt = new Date().toISOString();
+      StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+      scenario.objective = editedObjective;
+      setIsEditingObjective(false);
+      forceUpdate(n => n + 1);
+    }
+  };
+  
+  const handleCancelEditObjective = () => {
+    setEditedObjective(scenario.objective);
+    setIsEditingObjective(false);
   };
   
   const toggleStep = (stepId) => {
@@ -1950,6 +2008,11 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
                   Edit
                 </button>
               )}
+              {/* Clone button - always enabled */}
+              <button className="btn btn-secondary" onClick={() => onCloneScenario && onCloneScenario(scenario)}>
+                <i className="fas fa-copy"></i>
+                Clone
+              </button>
               {/* Only show Run Now button if scenario has NOT been run */}
               {!scenario.lastRun ? (
                 <button className="btn btn-primary" onClick={handleRunScenario}>
@@ -1969,26 +2032,106 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       
       {/* Objective Card */}
       <div className="objective-card card mb-4">
-        <div className="objective-header">
-          <div className={`objective-status ${Utils.getStatusClass(execution?.status || scenario.status)}`}>
-            <i className={`fas ${Utils.getStatusIcon(execution?.status || scenario.status)}`}></i>
-            <span>{(execution?.status || scenario.status).toUpperCase()}</span>
-          </div>
-          <div className="objective-tags">
-            {scenario.tags?.map(tag => (
-              <span key={tag} className="tag">{tag}</span>
-            ))}
-          </div>
+        <div className="objective-content">
+          {isEditingObjective ? (
+            <div className="objective-edit-container">
+              <input
+                type="text"
+                className="objective-edit-input"
+                value={editedObjective}
+                onChange={(e) => setEditedObjective(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveObjective();
+                  } else if (e.key === 'Escape') {
+                    handleCancelEditObjective();
+                  }
+                }}
+              />
+              <div className="objective-edit-actions">
+                <button className="btn btn-primary btn-sm" onClick={handleSaveObjective}>
+                  <i className="fas fa-check"></i>
+                  Save
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handleCancelEditObjective}>
+                  <i className="fas fa-times"></i>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="objective-title-container">
+              <div className="objective-title-left">
+                <h2 className="objective-title">{scenario.objective}</h2>
+                <button 
+                  className="btn-icon btn-edit-objective" 
+                  onClick={() => setIsEditingObjective(true)}
+                  title="Edit objective"
+                >
+                  <i className="fas fa-edit"></i>
+                </button>
+              </div>
+              <div className="objective-title-right">
+                <div className={`objective-status ${Utils.getStatusClass(execution?.status || scenario.status)}`}>
+                  <i className={`fas ${Utils.getStatusIcon(execution?.status || scenario.status)}`}></i>
+                  <span>{(execution?.status || scenario.status).toUpperCase()}</span>
+                </div>
+                <div className="objective-tags">
+                  {scenario.tags?.filter(tag => tag !== 'custom').map(tag => (
+                    <span key={tag} className="tag">{tag}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         
-        <div className="objective-content">
-          <div className="hierarchy-indicator">
-            <i className="fas fa-bullseye"></i>
-            <span>OBJECTIVE</span>
+        {/* Task Input/Output Section - shown when execution exists */}
+        {execution && execution.rawApiResponse && (
+          <div className="task-io-section">
+            <div className="task-io-grid">
+              {execution.rawApiResponse.task && (
+                <div className="task-io-item">
+                  <div className="task-io-label">
+                    <i className="fas fa-inbox"></i>
+                    <span>Task Input</span>
+                  </div>
+                  <div className="task-io-content task-input task-io-preview">
+                    {execution.rawApiResponse.task.split('\n').slice(0, 3).join('\n')}
+                    {execution.rawApiResponse.task.split('\n').length > 3 && '...'}
+                  </div>
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setShowTaskInputModal(true)}
+                  >
+                    <i className="fas fa-expand-alt"></i>
+                    View Full Text
+                  </button>
+                </div>
+              )}
+              {execution.rawApiResponse.output && (
+                <div className="task-io-item">
+                  <div className="task-io-label">
+                    <i className="fas fa-check-circle"></i>
+                    <span>Task Output</span>
+                  </div>
+                  <div className="task-io-content task-output task-io-preview">
+                    {execution.rawApiResponse.output.split('\n').slice(0, 3).join('\n')}
+                    {execution.rawApiResponse.output.split('\n').length > 3 && '...'}
+                  </div>
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setShowTaskOutputModal(true)}
+                  >
+                    <i className="fas fa-expand-alt"></i>
+                    View Full Text
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <h2 className="objective-title">{scenario.objective}</h2>
-          <p className="objective-description">{scenario.description}</p>
-        </div>
+        )}
         
         {/* Execution Progress - shown when execution exists */}
         {execution && (
@@ -2079,11 +2222,11 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           Agent View
         </button>
         <button 
-          className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('logs')}
+          className={`tab ${activeTab === 'screenshots' ? 'active' : ''}`}
+          onClick={() => setActiveTab('screenshots')}
         >
-          <i className="fas fa-terminal"></i>
-          Logs
+          <i className="fas fa-camera"></i>
+          Screenshots
         </button>
       </div>
       
@@ -2129,7 +2272,7 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       {/* Agent View Tab Content */}
       {activeTab === 'agent' && (
         execution ? (
-          <AgentViewTab execution={execution} />
+          <AgentViewTab execution={execution} isRunning={isRunning} />
         ) : (
           <div className="card">
             <div className="empty-state">
@@ -2141,57 +2284,106 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
         )
       )}
       
-      {/* Logs Tab Content */}
-      {activeTab === 'logs' && (
+      {/* Screenshots Tab Content */}
+      {activeTab === 'screenshots' && (
         execution ? (
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">
-                <i className="fas fa-terminal"></i>
-                Execution Logs
-              </h3>
-            </div>
-            <div className="logs-container">
-              {execution.logs?.map((log, index) => (
-                <div key={index} className={`log-entry ${log.level}`}>
-                  <span className="log-timestamp">
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </span>
-                  <span className={`log-level ${log.level}`}>{log.level.toUpperCase()}</span>
-                  <span className="log-message">{log.message}</span>
-                </div>
-              ))}
-              {(!execution.logs || execution.logs.length === 0) && (
-                <div className="empty-state small">
-                  <i className="fas fa-file-alt"></i>
-                  <p>No logs available</p>
-                </div>
-              )}
-            </div>
-          </div>
+          <ScreenshotsGalleryTab execution={execution} />
         ) : (
           <div className="card">
             <div className="empty-state">
-              <i className="fas fa-terminal"></i>
+              <i className="fas fa-camera"></i>
               <h3>No Execution Data</h3>
-              <p>Run this scenario to see execution logs.</p>
+              <p>Run this scenario to see screenshots from the agent journey.</p>
             </div>
           </div>
         )
       )}
       
+      {/* Task Output Modal */}
+      {showTaskOutputModal && execution?.rawApiResponse?.output && (
+        <div className="modal-overlay" onClick={() => setShowTaskOutputModal(false)}>
+          <div className="modal-container modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <i className="fas fa-check-circle"></i>
+                Task Output
+              </h3>
+              <button className="modal-close" onClick={() => setShowTaskOutputModal(false)}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <pre className="task-io-modal-content">{execution.rawApiResponse.output}</pre>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Task Input Modal */}
+      {showTaskInputModal && execution?.rawApiResponse?.task && (
+        <div className="modal-overlay" onClick={() => setShowTaskInputModal(false)}>
+          <div className="modal-container modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <i className="fas fa-inbox"></i>
+                Task Input
+              </h3>
+              <button className="modal-close" onClick={() => setShowTaskInputModal(false)}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <pre className="task-io-modal-content">{execution.rawApiResponse.task}</pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // ===== Agent View Tab Component - Raw Browser Use API Response =====
-const AgentViewTab = ({ execution }) => {
+const AgentViewTab = ({ execution, isRunning }) => {
   const [expandedSteps, setExpandedSteps] = useState({});
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [previousStepCount, setPreviousStepCount] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const agentStepsEndRef = React.useRef(null);
   
   // Get raw API response if available
   const rawResponse = execution.rawApiResponse;
   const agentSteps = rawResponse?.steps || [];
+  
+  // Manual refresh handler
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+    // Show a brief notification or animation
+    const notification = document.createElement('div');
+    notification.className = 'refresh-notification';
+    notification.innerHTML = '<i class="fas fa-check-circle"></i> Agent view refreshed';
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 2000);
+  };
+  
+  // Auto-expand and scroll to latest step when new steps arrive during live execution
+  useEffect(() => {
+    if (isRunning && agentSteps.length > previousStepCount) {
+      // Auto-expand the latest step
+      const latestStep = agentSteps[agentSteps.length - 1];
+      if (latestStep) {
+        setExpandedSteps(prev => ({
+          ...prev,
+          [latestStep.number || agentSteps.length]: true
+        }));
+        
+        // Scroll to the latest step after a short delay to ensure it's rendered
+        setTimeout(() => {
+          agentStepsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+      }
+      setPreviousStepCount(agentSteps.length);
+    }
+  }, [agentSteps.length, isRunning, previousStepCount]);
   
   const toggleStep = (stepNumber) => {
     setExpandedSteps(prev => ({
@@ -2276,22 +2468,6 @@ const AgentViewTab = ({ execution }) => {
                 </div>
               )}
             </div>
-            {rawResponse.task && (
-              <div className="summary-row full-width">
-                <div className="summary-item">
-                  <span className="summary-label">Task Prompt</span>
-                  <div className="summary-value task-prompt">{rawResponse.task}</div>
-                </div>
-              </div>
-            )}
-            {rawResponse.output && (
-              <div className="summary-row full-width">
-                <div className="summary-item">
-                  <span className="summary-label">Final Output</span>
-                  <div className="summary-value task-output">{rawResponse.output}</div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -2302,8 +2478,22 @@ const AgentViewTab = ({ execution }) => {
           <h3 className="card-title">
             <i className="fas fa-brain"></i>
             Agent Steps ({agentSteps.length})
+            {isRunning && agentSteps.length > 0 && (
+              <span className="live-indicator">
+                <i className="fas fa-circle"></i>
+                Live
+              </span>
+            )}
           </h3>
           <div className="card-actions">
+            <button 
+              className="btn btn-ghost btn-sm" 
+              onClick={handleRefresh}
+              title="Refresh agent steps"
+            >
+              <i className="fas fa-sync-alt"></i>
+              Refresh
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={expandAll}>
               <i className="fas fa-expand-alt"></i>
               Expand All
@@ -2315,7 +2505,7 @@ const AgentViewTab = ({ execution }) => {
           </div>
         </div>
         
-        <div className="agent-steps-list">
+        <div className="agent-steps-list" key={refreshKey}>
           {agentSteps.map((step, index) => (
             <div key={step.number || index} className="agent-step-item">
               <div 
@@ -2325,6 +2515,9 @@ const AgentViewTab = ({ execution }) => {
                 <div className="agent-step-number">
                   <i className="fas fa-brain"></i>
                   <span>Step {step.number || index + 1}</span>
+                  {isRunning && index === agentSteps.length - 1 && (
+                    <span className="badge-new">Latest</span>
+                  )}
                 </div>
                 <div className="agent-step-meta">
                   {step.url && (
@@ -2435,6 +2628,7 @@ const AgentViewTab = ({ execution }) => {
               )}
             </div>
           ))}
+          <div ref={agentStepsEndRef} />
         </div>
       </div>
       
@@ -2446,6 +2640,173 @@ const AgentViewTab = ({ execution }) => {
               <i className="fas fa-times"></i>
             </button>
             <img src={selectedScreenshot} alt="Full size screenshot" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===== Screenshots Gallery Tab Component =====
+const ScreenshotsGalleryTab = ({ execution }) => {
+  const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  
+  // Get raw API response if available
+  const rawResponse = execution.rawApiResponse;
+  const agentSteps = rawResponse?.steps || [];
+  
+  // Collect all screenshots from agent steps
+  const screenshots = agentSteps
+    .map((step, index) => ({
+      stepNumber: step.number || index + 1,
+      url: step.screenshotUrl,
+      pageUrl: step.url,
+      memory: step.memory,
+      nextGoal: step.nextGoal
+    }))
+    .filter(item => item.url);
+  
+  const openScreenshot = (url, index) => {
+    setSelectedScreenshot(url);
+    setSelectedIndex(index);
+  };
+  
+  const closeScreenshot = () => {
+    setSelectedScreenshot(null);
+  };
+  
+  const goToPrev = (e) => {
+    if (e) e.stopPropagation();
+    if (selectedIndex > 0) {
+      const newIndex = selectedIndex - 1;
+      setSelectedIndex(newIndex);
+      setSelectedScreenshot(screenshots[newIndex].url);
+    }
+  };
+  
+  const goToNext = (e) => {
+    if (e) e.stopPropagation();
+    if (selectedIndex < screenshots.length - 1) {
+      const newIndex = selectedIndex + 1;
+      setSelectedIndex(newIndex);
+      setSelectedScreenshot(screenshots[newIndex].url);
+    }
+  };
+  
+  // Keyboard navigation
+  useEffect(() => {
+    if (!selectedScreenshot) return;
+    
+    const handleKeyDown = (e) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goToPrev();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goToNext();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeScreenshot();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedScreenshot, selectedIndex, screenshots.length]);
+  
+  if (screenshots.length === 0) {
+    return (
+      <div className="card">
+        <div className="empty-state">
+          <i className="fas fa-camera"></i>
+          <h3>No Screenshots Available</h3>
+          <p>This execution doesn't have any screenshots. Screenshots are captured during agent execution.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="screenshots-tab-container">
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">
+            <i className="fas fa-camera"></i>
+            Agent Journey Screenshots ({screenshots.length})
+          </h3>
+        </div>
+        
+        <div className="screenshots-grid">
+          {screenshots.map((screenshot, index) => (
+            <div 
+              key={index} 
+              className="screenshot-grid-item"
+              onClick={() => openScreenshot(screenshot.url, index)}
+            >
+              <div className="screenshot-thumbnail">
+                <img src={screenshot.url} alt={`Screenshot from step ${screenshot.stepNumber}`} />
+                <div className="screenshot-overlay">
+                  <i className="fas fa-search-plus"></i>
+                </div>
+              </div>
+              <div className="screenshot-info">
+                <div className="screenshot-step-number">
+                  <i className="fas fa-brain"></i>
+                  Step {screenshot.stepNumber}
+                </div>
+                {screenshot.pageUrl && (
+                  <div className="screenshot-url" title={screenshot.pageUrl}>
+                    <i className="fas fa-globe"></i>
+                    {screenshot.pageUrl.length > 40 ? screenshot.pageUrl.substring(0, 40) + '...' : screenshot.pageUrl}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Screenshot Modal */}
+      {selectedScreenshot && (
+        <div className="screenshot-modal" onClick={closeScreenshot}>
+          <div className="screenshot-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="close-modal" onClick={closeScreenshot}>
+              <i className="fas fa-times"></i>
+            </button>
+            
+            <div className="modal-navigation">
+              <button 
+                className="modal-nav-btn prev" 
+                onClick={goToPrev}
+                disabled={selectedIndex === 0}
+              >
+                <i className="fas fa-chevron-left"></i>
+              </button>
+              <button 
+                className="modal-nav-btn next" 
+                onClick={goToNext}
+                disabled={selectedIndex === screenshots.length - 1}
+              >
+                <i className="fas fa-chevron-right"></i>
+              </button>
+            </div>
+            
+            <img src={selectedScreenshot} alt="Full size screenshot" />
+            
+            <div className="modal-info">
+              <div className="modal-step-number">
+                Step {screenshots[selectedIndex].stepNumber} of {screenshots.length}
+              </div>
+              {screenshots[selectedIndex].pageUrl && (
+                <div className="modal-page-url">
+                  <i className="fas fa-globe"></i>
+                  <a href={screenshots[selectedIndex].pageUrl} target="_blank" rel="noopener noreferrer">
+                    {screenshots[selectedIndex].pageUrl}
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2547,19 +2908,24 @@ const HistoryPage = ({ onViewExecution, onViewFlowRun }) => {
 };
 
 // ===== Create Scenario Page =====
-const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated, editingScenario, initialFolderId }) => {
+const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated, editingScenario, cloningScenario, initialFolderId }) => {
   const { folders } = MOCK_DATA;
   // Pre-fill data if editing an existing scenario
   const isEditMode = !!editingScenario;
-  const [objective, setObjective] = useState(editingScenario?.objective || '');
+  const isCloneMode = !!cloningScenario;
+  const sourceScenario = editingScenario || cloningScenario;
+  
+  const [objective, setObjective] = useState(
+    isCloneMode && cloningScenario?.objective ? `${cloningScenario.objective} (Copy)` : sourceScenario?.objective || ''
+  );
   const [selectedFolderId, setSelectedFolderId] = useState(
-    editingScenario?.folderId || initialFolderId || folders.find(f => f.isDefault)?.id || null
+    sourceScenario?.folderId || initialFolderId || folders.find(f => f.isDefault)?.id || null
   );
   const [stepsText, setStepsText] = useState(
-    editingScenario?.steps?.map(s => s.description).join('\n') || ''
+    sourceScenario?.steps?.map(s => s.description).join('\n') || ''
   );
   const [parsedSteps, setParsedSteps] = useState([]);
-  const [stepsMode, setStepsMode] = useState(isEditMode ? 'custom' : null); // 'demo' or 'custom'
+  const [stepsMode, setStepsMode] = useState((isEditMode || isCloneMode) ? 'custom' : null); // 'demo' or 'custom'
   const [demoModified, setDemoModified] = useState(false); // Track if demo steps were edited
   const [showDemoWarning, setShowDemoWarning] = useState(false); // Show warning modal when editing demo
   const [isRunning, setIsRunning] = useState(false);
@@ -2882,7 +3248,7 @@ Click Actions → Open`;
       folderId: selectedFolderId || folders.find(f => f.isDefault)?.id,
       objective: objective || 'Untitled Scenario',
       description: objective ? `Custom scenario: ${objective}` : 'Custom scenario',
-      tags: ['custom'],
+      tags: [],
       createdAt: currentTime,
       updatedAt: currentTime,
       createdBy: 'admin@trinamix.com',
@@ -3048,7 +3414,7 @@ Click Actions → Open`;
       folderId: selectedFolderId || folders.find(f => f.isDefault)?.id,
       objective: scenarioObjective,
       description: isDemo ? `Demo scenario created from: ${scenarioObjective}` : (objective ? `Custom scenario: ${objective}` : 'Custom scenario'),
-      tags: isDemo ? ['demo', ...(referenceScenario?.tags || [])] : ['custom'],
+      tags: isDemo ? ['demo', ...(referenceScenario?.tags || [])] : [],
       createdAt: currentTime,
       updatedAt: currentTime,
       createdBy: 'admin@trinamix.com',
@@ -3106,12 +3472,10 @@ Click Actions → Open`;
     isCancelledRef.current = false;
     
     try {
-      // Build the task prompt from objective and steps
+      // Build the task prompt from steps only (objective is internal heading only)
       // Resolve any variable references to their actual values
       const taskStepsText = newSteps.map((s, i) => `${i + 1}. ${s.description}`).join('\n');
-      const rawPrompt = objective 
-        ? `Objective: ${objective}\n\nSteps to execute:\n${taskStepsText}`
-        : `Steps to execute:\n${taskStepsText}`;
+      const rawPrompt = `Steps to execute:\n${taskStepsText}`;
       
       // Resolve variables - replace \Variable_Name with actual credentials/config
       const taskPrompt = resolveVariablesForAPI(rawPrompt);
@@ -3141,6 +3505,16 @@ Click Actions → Open`;
       // Update execution with task ID
       newExecution.metadata.browserUseTaskId = createResult.id;
       newExecution.metadata.browserUseSessionId = createResult.sessionId;
+      
+      // Store active task info for background tracking
+      const activeTasks = StorageHelper.loadActiveTasks();
+      activeTasks.push({
+        taskId: createResult.id,
+        scenarioId: newScenarioId,
+        executionId: newExecutionId,
+        startTime: new Date().toISOString()
+      });
+      StorageHelper.saveActiveTasks(activeTasks);
       
       // Poll for completion with progress updates
       const finalResult = await BrowserUseAPI.pollTaskUntilComplete(
@@ -3215,6 +3589,9 @@ Click Actions → Open`;
       StorageHelper.saveExecutions(MOCK_DATA.executions);
       StorageHelper.saveStats(MOCK_DATA.stats);
       
+      // Remove from active tasks
+      StorageHelper.removeActiveTask(createResult.id);
+      
       setIsRunning(false);
       setRunStatus(null);
       currentTaskIdRef.current = null;
@@ -3266,6 +3643,11 @@ Click Actions → Open`;
       StorageHelper.saveScenarios(MOCK_DATA.scenarios);
       StorageHelper.saveExecutions(MOCK_DATA.executions);
       StorageHelper.saveStats(MOCK_DATA.stats);
+      
+      // Remove from active tasks if taskId exists
+      if (currentTaskIdRef.current) {
+        StorageHelper.removeActiveTask(currentTaskIdRef.current);
+      }
       
       setIsRunning(false);
       setRunStatus(null);
@@ -3332,6 +3714,11 @@ Click Actions → Open`;
     StorageHelper.saveExecutions(MOCK_DATA.executions);
     StorageHelper.saveStats(MOCK_DATA.stats);
     
+    // Remove from active tasks
+    if (currentTaskIdRef.current) {
+      StorageHelper.removeActiveTask(currentTaskIdRef.current);
+    }
+    
     setIsRunning(false);
     setIsCancelling(false);
     setRunStatus(null);
@@ -3351,8 +3738,8 @@ Click Actions → Open`;
             <i className="fas fa-arrow-left"></i>
             Back
           </button>
-          <h1 className="page-title">{isEditMode ? 'Edit Scenario' : 'Create New Scenario'}</h1>
-          <p className="page-subtitle">{isEditMode ? 'Modify your test objective and steps' : 'Define your test objective and steps'}</p>
+          <h1 className="page-title">{isEditMode ? 'Edit Scenario' : isCloneMode ? 'Clone Scenario' : 'Create New Scenario'}</h1>
+          <p className="page-subtitle">{isEditMode ? 'Modify your test objective and steps' : isCloneMode ? 'Create a copy of this scenario' : 'Define your test objective and steps'}</p>
         </div>
       </div>
       
@@ -7167,6 +7554,7 @@ const App = () => {
   const [selectedExecutionId, setSelectedExecutionId] = useState(null);
   const [selectedStepId, setSelectedStepId] = useState(null);
   const [editingScenario, setEditingScenario] = useState(null); // For edit mode
+  const [cloningScenario, setCloningScenario] = useState(null); // For clone mode
   const [initialFolderId, setInitialFolderId] = useState(null); // For create scenario with folder
   const [refreshKey, setRefreshKey] = useState(0); // Used to trigger re-renders after data changes
   const [globalSearchQuery, setGlobalSearchQuery] = useState(''); // Global search state
@@ -7200,16 +7588,9 @@ const App = () => {
     }
     
     if (savedScenarios && savedScenarios.length > 0) {
-      // Handle interrupted 'running' scenarios - mark them as 'interrupted'
-      // since a page refresh means the run was not completed
+      // Don't mark running scenarios as interrupted - they may still be running in background
+      // We'll check their actual status via background polling
       savedScenarios.forEach(scenario => {
-        if (scenario.status === 'running') {
-          scenario.status = 'interrupted';
-          if (scenario.lastRun) {
-            scenario.lastRun.status = 'interrupted';
-          }
-          dataModified = true;
-        }
         // Ensure scenario has a folderId - assign to root folder if missing
         if (!scenario.folderId) {
           const rootFolder = MOCK_DATA.folders.find(f => f.isDefault);
@@ -7233,38 +7614,13 @@ const App = () => {
     }
     
     if (savedExecutions && savedExecutions.length > 0) {
-      // Handle interrupted 'running' executions
-      savedExecutions.forEach(execution => {
-        if (execution.status === 'running') {
-          execution.status = 'interrupted';
-          execution.endTime = new Date().toISOString();
-          execution.logs = execution.logs || [];
-          execution.logs.push({
-            timestamp: new Date().toISOString(),
-            level: 'warning',
-            message: 'Execution was interrupted due to page refresh or browser close'
-          });
-          // Mark any running step results as interrupted
-          if (execution.stepResults) {
-            execution.stepResults.forEach(stepResult => {
-              if (stepResult.status === 'running') {
-                stepResult.status = 'interrupted';
-                stepResult.endTime = new Date().toISOString();
-              }
-            });
-          }
-          dataModified = true;
-        }
-      });
+      // Don't mark running executions as interrupted - they may still be running in background
+      // We'll check their actual status via background polling
       MOCK_DATA.executions = savedExecutions;
     }
     
     if (savedStats) {
-      // Reset running count since page refresh means nothing is actually running
-      if (savedStats.runningScenarios > 0) {
-        savedStats.runningScenarios = 0;
-        dataModified = true;
-      }
+      // Keep the running count as-is since scenarios may still be running in background
       MOCK_DATA.stats = savedStats;
     }
     
@@ -7295,6 +7651,103 @@ const App = () => {
     // Trigger re-render after loading data
     setRefreshKey(prev => prev + 1);
   }, []);
+  
+  // Background polling for active tasks
+  useEffect(() => {
+    const pollActiveTasks = async () => {
+      const activeTasks = StorageHelper.loadActiveTasks();
+      
+      if (activeTasks.length === 0) return;
+      
+      console.log(`Polling ${activeTasks.length} active task(s)...`);
+      
+      for (const task of activeTasks) {
+        try {
+          // Check task status via API
+          const taskStatus = await BrowserUseAPI.getTask(task.taskId);
+          
+          // Only update if task is finished or stopped
+          if (taskStatus.status === 'finished' || taskStatus.status === 'stopped') {
+            console.log(`Task ${task.taskId} completed with status: ${taskStatus.status}`);
+            
+            // Find the scenario and execution
+            const scenario = MOCK_DATA.scenarios.find(s => s.id === task.scenarioId);
+            const execIndex = MOCK_DATA.executions.findIndex(e => e.id === task.executionId);
+            
+            if (scenario && execIndex >= 0) {
+              // Transform the final task result to execution
+              const finalExecution = BrowserUseAPI.transformTaskToExecution(taskStatus, scenario, task.executionId);
+              
+              // Update execution
+              MOCK_DATA.executions[execIndex] = finalExecution;
+              
+              // Update scenario status
+              const scenarioIndex = MOCK_DATA.scenarios.findIndex(s => s.id === task.scenarioId);
+              if (scenarioIndex >= 0) {
+                MOCK_DATA.scenarios[scenarioIndex].status = finalExecution.status;
+                MOCK_DATA.scenarios[scenarioIndex].lastRun = {
+                  executionId: task.executionId,
+                  status: finalExecution.status,
+                  date: finalExecution.endTime || new Date().toISOString(),
+                  duration: finalExecution.duration || 0
+                };
+                
+                MOCK_DATA.scenarios[scenarioIndex].steps = MOCK_DATA.scenarios[scenarioIndex].steps.map((step, i) => ({
+                  ...step,
+                  status: finalExecution.stepResults[i]?.status || step.status,
+                  duration: finalExecution.stepResults[i]?.duration || step.duration,
+                  endTime: finalExecution.stepResults[i]?.endTime || step.endTime
+                }));
+              }
+              
+              // Update stats
+              MOCK_DATA.stats.runningScenarios = Math.max(0, MOCK_DATA.stats.runningScenarios - 1);
+              if (finalExecution.status === 'passed') {
+                MOCK_DATA.stats.passedScenarios += 1;
+              } else if (finalExecution.status === 'failed') {
+                MOCK_DATA.stats.failedScenarios += 1;
+              }
+              
+              // Persist updates
+              StorageHelper.saveScenarios(MOCK_DATA.scenarios);
+              StorageHelper.saveExecutions(MOCK_DATA.executions);
+              StorageHelper.saveStats(MOCK_DATA.stats);
+              
+              // Remove from active tasks
+              StorageHelper.removeActiveTask(task.taskId);
+              
+              // Trigger re-render
+              setRefreshKey(prev => prev + 1);
+            }
+          } else {
+            // Still running - update progress
+            const execIndex = MOCK_DATA.executions.findIndex(e => e.id === task.executionId);
+            if (execIndex >= 0) {
+              const scenario = MOCK_DATA.scenarios.find(s => s.id === task.scenarioId);
+              if (scenario) {
+                const updatedExecution = BrowserUseAPI.transformTaskToExecution(taskStatus, scenario, task.executionId);
+                MOCK_DATA.executions[execIndex] = updatedExecution;
+                StorageHelper.saveExecutions(MOCK_DATA.executions);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error polling task ${task.taskId}:`, error);
+          // If task fails to poll multiple times, we might want to mark it as failed
+          // For now, just log the error and continue
+        }
+      }
+    };
+    
+    // Poll immediately on mount
+    pollActiveTasks();
+    
+    // Set up polling interval (every 5 seconds)
+    const pollInterval = setInterval(pollActiveTasks, 5000);
+    
+    // Cleanup on unmount
+    return () => clearInterval(pollInterval);
+  }, []); // Empty dependency array - only run once on mount
   
   // Save data to localStorage whenever it changes
   const persistData = useCallback(() => {
@@ -7438,6 +7891,14 @@ const App = () => {
   const handleEditScenario = (scenario) => {
     setPreviousPage(activePage);
     setEditingScenario(scenario);
+    setCloningScenario(null);
+    setActivePage('create-scenario');
+  };
+  
+  const handleCloneScenario = (scenario) => {
+    setPreviousPage(activePage);
+    setCloningScenario(scenario);
+    setEditingScenario(null);
     setActivePage('create-scenario');
   };
   
@@ -7476,7 +7937,7 @@ const App = () => {
       case 'history':
         return ['Home', 'Run History'];
       case 'create-scenario':
-        return editingScenario ? ['Home', 'Scenarios', 'Edit Scenario'] : ['Home', 'New Scenario'];
+        return editingScenario ? ['Home', 'Scenarios', 'Edit Scenario'] : cloningScenario ? ['Home', 'Scenarios', 'Clone Scenario'] : ['Home', 'New Scenario'];
       case 'flow-builder':
         return ['Home', 'Flow Builder'];
       case 'variables':
@@ -7517,6 +7978,7 @@ const App = () => {
             onBack={handleBackFromScenarioDetail}
             onViewStepDetail={handleViewStepDetail}
             onEditScenario={handleEditScenario}
+            onCloneScenario={handleCloneScenario}
             onViewFlowRun={handleViewFlowRun}
           />
         );
@@ -7544,16 +8006,19 @@ const App = () => {
           <CreateScenarioPage 
             onBack={() => {
               setEditingScenario(null);
+              setCloningScenario(null);
               setInitialFolderId(null);
               handleNavigate('scenarios');
             }}
             onNavigate={(page) => {
               setEditingScenario(null);
+              setCloningScenario(null);
               setInitialFolderId(null);
               handleNavigate(page);
             }}
             onScenarioCreated={handleScenarioCreated}
             editingScenario={editingScenario}
+            cloningScenario={cloningScenario}
             initialFolderId={initialFolderId}
           />
         );

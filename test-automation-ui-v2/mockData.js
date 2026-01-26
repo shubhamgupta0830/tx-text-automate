@@ -21,7 +21,8 @@ const STORAGE_KEYS = {
   FOLDERS: 'trinamix_folders',
   DATA_VERSION: 'trinamix_data_version',
   FLOW_RUNS: 'trinamix_flow_runs',
-  VARIABLES: 'trinamix_variables'
+  VARIABLES: 'trinamix_variables',
+  ACTIVE_TASKS: 'trinamix_active_tasks'
 };
 
 // Increment this when folder structure changes to force refresh
@@ -191,6 +192,37 @@ const StorageHelper = {
     } catch (e) {
       console.error('Error checking data version:', e);
       return false;
+    }
+  },
+
+  // Save active tasks (running in background) to localStorage
+  saveActiveTasks: (activeTasks) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_TASKS, JSON.stringify(activeTasks));
+    } catch (e) {
+      console.error('Error saving active tasks to localStorage:', e);
+    }
+  },
+
+  // Load active tasks from localStorage
+  loadActiveTasks: () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.ACTIVE_TASKS);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error('Error loading active tasks from localStorage:', e);
+      return [];
+    }
+  },
+
+  // Remove a specific active task
+  removeActiveTask: (taskId) => {
+    try {
+      const activeTasks = StorageHelper.loadActiveTasks();
+      const filtered = activeTasks.filter(t => t.taskId !== taskId);
+      StorageHelper.saveActiveTasks(filtered);
+    } catch (e) {
+      console.error('Error removing active task:', e);
     }
   }
 };
