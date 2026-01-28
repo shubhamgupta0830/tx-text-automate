@@ -55,6 +55,7 @@ const Sidebar = ({ activePage, onNavigate }) => {
           >
             <i className="fas fa-project-diagram"></i>
             Flow Builder
+            <span className="beta-badge">beta</span>
           </a>
           <a 
             className={`nav-item ${activePage === 'variables' ? 'active' : ''}`}
@@ -62,26 +63,10 @@ const Sidebar = ({ activePage, onNavigate }) => {
           >
             <i className="fas fa-key"></i>
             Variables
+            <span className="beta-badge">beta</span>
           </a>
         </div>
       </nav>
-      
-      {/* Hierarchy Legend */}
-      <div className="hierarchy-legend">
-        <div className="legend-title">Hierarchy</div>
-        <div className="legend-item">
-          <i className="fas fa-bullseye"></i>
-          <span>Objective/Scenario</span>
-        </div>
-        <div className="legend-item level-1">
-          <i className="fas fa-list-ol"></i>
-          <span>Steps (User Input)</span>
-        </div>
-        <div className="legend-item level-2">
-          <i className="fas fa-cogs"></i>
-          <span>Sub-steps (Browser)</span>
-        </div>
-      </div>
     </aside>
   );
 };
@@ -858,7 +843,7 @@ const ScenarioCard = ({ scenario, onClick, onDelete }) => {
       </div>
       
       <h3 className="scenario-objective">{scenario.objective}</h3>
-      <p className="scenario-description">{scenario.description}</p>
+      <p className="scenario-description">{scenario.steps?.[0]?.description || scenario.description}</p>
       
       <div className="scenario-steps-summary">
         <div className="steps-bar">
@@ -940,36 +925,46 @@ const Dashboard = ({ onNavigate, onViewScenario, onViewExecution, savedFlows = [
           label="Failed" 
           value={scenarios.filter(s => s.status === 'failed').length}
         />
-        <StatCard 
-          icon="fa-spinner" 
-          iconColor="orange" 
-          label="Running" 
-          value={scenarios.filter(s => s.status === 'running').length}
-        />
-        <StatCard 
-          icon="fa-clock" 
-          iconColor="gray" 
-          label="Pending" 
-          value={scenarios.filter(s => s.status === 'pending').length}
-        />
-        <StatCard 
-          icon="fa-ban" 
-          iconColor="gray" 
-          label="Cancelled" 
-          value={scenarios.filter(s => s.status === 'cancelled').length}
-        />
-        <StatCard 
-          icon="fa-exclamation-triangle" 
-          iconColor="yellow" 
-          label="Interrupted" 
-          value={scenarios.filter(s => s.status === 'interrupted').length}
-        />
-        <StatCard 
-          icon="fa-forward" 
-          iconColor="gray" 
-          label="Skipped" 
-          value={scenarios.filter(s => s.status === 'skipped').length}
-        />
+        {scenarios.filter(s => s.status === 'running').length > 0 && (
+          <StatCard 
+            icon="fa-spinner" 
+            iconColor="orange" 
+            label="Running" 
+            value={scenarios.filter(s => s.status === 'running').length}
+          />
+        )}
+        {scenarios.filter(s => s.status === 'pending').length > 0 && (
+          <StatCard 
+            icon="fa-clock" 
+            iconColor="gray" 
+            label="Pending" 
+            value={scenarios.filter(s => s.status === 'pending').length}
+          />
+        )}
+        {scenarios.filter(s => s.status === 'cancelled').length > 0 && (
+          <StatCard 
+            icon="fa-ban" 
+            iconColor="gray" 
+            label="Cancelled" 
+            value={scenarios.filter(s => s.status === 'cancelled').length}
+          />
+        )}
+        {scenarios.filter(s => s.status === 'interrupted').length > 0 && (
+          <StatCard 
+            icon="fa-exclamation-triangle" 
+            iconColor="yellow" 
+            label="Interrupted" 
+            value={scenarios.filter(s => s.status === 'interrupted').length}
+          />
+        )}
+        {scenarios.filter(s => s.status === 'skipped').length > 0 && (
+          <StatCard 
+            icon="fa-forward" 
+            iconColor="gray" 
+            label="Skipped" 
+            value={scenarios.filter(s => s.status === 'skipped').length}
+          />
+        )}
       </div>
       
       {/* Quick Actions */}
@@ -1526,36 +1521,46 @@ const ScenariosPage = ({ onViewScenario, onNavigate, onDeleteScenario }) => {
           >
             Failed ({folderFilteredScenarios.filter(s => s.status === 'failed').length})
           </button>
-          <button 
-            className={`filter-btn info ${filter === 'running' ? 'active' : ''}`}
-            onClick={() => setFilter('running')}
-          >
-            Running ({folderFilteredScenarios.filter(s => s.status === 'running').length})
-          </button>
-          <button 
-            className={`filter-btn warning ${filter === 'pending' ? 'active' : ''}`}
-            onClick={() => setFilter('pending')}
-          >
-            Pending ({folderFilteredScenarios.filter(s => s.status === 'pending').length})
-          </button>
-          <button 
-            className={`filter-btn warning ${filter === 'cancelled' ? 'active' : ''}`}
-            onClick={() => setFilter('cancelled')}
-          >
-            Cancelled ({folderFilteredScenarios.filter(s => s.status === 'cancelled').length})
-          </button>
-          <button 
-            className={`filter-btn warning ${filter === 'interrupted' ? 'active' : ''}`}
-            onClick={() => setFilter('interrupted')}
-          >
-            Interrupted ({folderFilteredScenarios.filter(s => s.status === 'interrupted').length})
-          </button>
-          <button 
-            className={`filter-btn warning ${filter === 'skipped' ? 'active' : ''}`}
-            onClick={() => setFilter('skipped')}
-          >
-            Skipped ({folderFilteredScenarios.filter(s => s.status === 'skipped').length})
-          </button>
+          {folderFilteredScenarios.filter(s => s.status === 'running').length > 0 && (
+            <button 
+              className={`filter-btn info ${filter === 'running' ? 'active' : ''}`}
+              onClick={() => setFilter('running')}
+            >
+              Running ({folderFilteredScenarios.filter(s => s.status === 'running').length})
+            </button>
+          )}
+          {folderFilteredScenarios.filter(s => s.status === 'pending').length > 0 && (
+            <button 
+              className={`filter-btn warning ${filter === 'pending' ? 'active' : ''}`}
+              onClick={() => setFilter('pending')}
+            >
+              Pending ({folderFilteredScenarios.filter(s => s.status === 'pending').length})
+            </button>
+          )}
+          {folderFilteredScenarios.filter(s => s.status === 'cancelled').length > 0 && (
+            <button 
+              className={`filter-btn warning ${filter === 'cancelled' ? 'active' : ''}`}
+              onClick={() => setFilter('cancelled')}
+            >
+              Cancelled ({folderFilteredScenarios.filter(s => s.status === 'cancelled').length})
+            </button>
+          )}
+          {folderFilteredScenarios.filter(s => s.status === 'interrupted').length > 0 && (
+            <button 
+              className={`filter-btn warning ${filter === 'interrupted' ? 'active' : ''}`}
+              onClick={() => setFilter('interrupted')}
+            >
+              Interrupted ({folderFilteredScenarios.filter(s => s.status === 'interrupted').length})
+            </button>
+          )}
+          {folderFilteredScenarios.filter(s => s.status === 'skipped').length > 0 && (
+            <button 
+              className={`filter-btn warning ${filter === 'skipped' ? 'active' : ''}`}
+              onClick={() => setFilter('skipped')}
+            >
+              Skipped ({folderFilteredScenarios.filter(s => s.status === 'skipped').length})
+            </button>
+          )}
         </div>
         
         {/* Scenarios Grid */}
@@ -2033,6 +2038,23 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           <button className="btn btn-secondary" onClick={() => onCloneScenario && onCloneScenario(scenario)}>
             <i className="fas fa-copy"></i>
             Clone
+          </button>
+          
+          {/* Export as Demo button */}
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => {
+              if (typeof exportDemoScenario === 'function') {
+                exportDemoScenario(scenario.id);
+                alert('Demo scenario exported! Check the browser console for JSON output (also copied to clipboard).');
+              } else {
+                alert('Export function not available. Please refresh the page.');
+              }
+            }}
+            title="Export this scenario with execution data as a demo scenario"
+          >
+            <i className="fas fa-download"></i>
+            Export Scenario
           </button>
           
           {/* Only show Run Now button if scenario has NOT been run */}
@@ -7682,7 +7704,17 @@ const App = () => {
       });
       MOCK_DATA.scenarios = savedScenarios;
     } else {
-      // Ensure default scenarios have folderIds
+      // No saved scenarios - load demo scenarios if available
+      if (typeof loadDemoScenarios === 'function') {
+        const demoData = loadDemoScenarios();
+        if (demoData.scenarios.length > 0) {
+          console.log(`📦 Loaded ${demoData.scenarios.length} demo scenario(s)`);
+          MOCK_DATA.scenarios = demoData.scenarios;
+          dataModified = true;
+        }
+      }
+      
+      // Ensure scenarios have folderIds
       MOCK_DATA.scenarios.forEach(scenario => {
         if (!scenario.folderId) {
           const rootFolder = MOCK_DATA.folders.find(f => f.isDefault);
@@ -7697,6 +7729,15 @@ const App = () => {
       // Don't mark running executions as interrupted - they may still be running in background
       // We'll check their actual status via background polling
       MOCK_DATA.executions = savedExecutions;
+    } else {
+      // No saved executions - load demo executions if available
+      if (typeof loadDemoScenarios === 'function') {
+        const demoData = loadDemoScenarios();
+        if (demoData.executions.length > 0) {
+          MOCK_DATA.executions = demoData.executions;
+          dataModified = true;
+        }
+      }
     }
     
     if (savedStats) {

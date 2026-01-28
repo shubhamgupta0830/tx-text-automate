@@ -181,6 +181,17 @@ code {
   border-radius: var(--radius-full);
 }
 
+.beta-badge {
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 0.625rem;
+  font-weight: var(--font-semibold);
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+  text-transform: lowercase;
+}
+
 .sidebar-nav {
   flex: 1;
   padding: var(--spacing-4);
