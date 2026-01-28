@@ -45,15 +45,9 @@ const Sidebar = ({ activePage, onNavigate }) => {
           >
             <i className="fas fa-history"></i>
             Run History
-            <span className="nav-item-badge">{MOCK_DATA.stats.activeRuns}</span>
-          </a>
-        </div>
-        
-        <div className="nav-section">
-          <div className="nav-section-title">Actions</div>
-          <a className="nav-item" onClick={() => onNavigate('create-scenario')}>
-            <i className="fas fa-plus-circle"></i>
-            New Scenario
+            {MOCK_DATA.scenarios.filter(s => s.status === 'running').length > 0 && (
+              <span className="nav-item-badge">{MOCK_DATA.scenarios.filter(s => s.status === 'running').length}</span>
+            )}
           </a>
           <a 
             className={`nav-item ${activePage === 'flow-builder' ? 'active' : ''}`}
@@ -62,24 +56,12 @@ const Sidebar = ({ activePage, onNavigate }) => {
             <i className="fas fa-project-diagram"></i>
             Flow Builder
           </a>
-          <a className="nav-item">
-            <i className="fas fa-calendar"></i>
-            Schedules
-          </a>
-        </div>
-        
-        <div className="nav-section">
-          <div className="nav-section-title">Settings</div>
           <a 
             className={`nav-item ${activePage === 'variables' ? 'active' : ''}`}
             onClick={() => onNavigate('variables')}
           >
             <i className="fas fa-key"></i>
             Variables
-          </a>
-          <a className="nav-item">
-            <i className="fas fa-cog"></i>
-            Configuration
           </a>
         </div>
       </nav>
@@ -432,21 +414,7 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-// ===== Progress Bar Component =====
-const ProgressBar = ({ percentage, status }) => {
-  const statusClass = Utils.getStatusClass(status);
-  return (
-    <div className="progress-bar-container">
-      <div className="progress-bar-track">
-        <div 
-          className={`progress-bar-fill ${statusClass}`} 
-          style={{ width: `${percentage}%` }}
-        ></div>
-      </div>
-      <span className="progress-bar-text">{percentage}%</span>
-    </div>
-  );
-};
+
 
 // ===== Sub-Step Item Component (Browser Actions) - FULL EXECUTION DETAILS =====
 const SubStepItem = ({ subStep, isLast, isExpanded, onToggle }) => {
@@ -958,25 +926,49 @@ const Dashboard = ({ onNavigate, onViewScenario, onViewExecution, savedFlows = [
           icon="fa-bullseye" 
           iconColor="blue" 
           label="Total Scenarios" 
-          value={stats.totalScenarios}
+          value={scenarios.length}
         />
         <StatCard 
           icon="fa-check-circle" 
           iconColor="green" 
           label="Passed" 
-          value={stats.passedScenarios}
+          value={scenarios.filter(s => s.status === 'passed').length}
         />
         <StatCard 
           icon="fa-times-circle" 
           iconColor="red" 
           label="Failed" 
-          value={stats.failedScenarios}
+          value={scenarios.filter(s => s.status === 'failed').length}
         />
         <StatCard 
-          icon="fa-project-diagram" 
-          iconColor="purple" 
-          label="Saved Flows" 
-          value={savedFlows.length}
+          icon="fa-spinner" 
+          iconColor="orange" 
+          label="Running" 
+          value={scenarios.filter(s => s.status === 'running').length}
+        />
+        <StatCard 
+          icon="fa-clock" 
+          iconColor="gray" 
+          label="Pending" 
+          value={scenarios.filter(s => s.status === 'pending').length}
+        />
+        <StatCard 
+          icon="fa-ban" 
+          iconColor="gray" 
+          label="Cancelled" 
+          value={scenarios.filter(s => s.status === 'cancelled').length}
+        />
+        <StatCard 
+          icon="fa-exclamation-triangle" 
+          iconColor="yellow" 
+          label="Interrupted" 
+          value={scenarios.filter(s => s.status === 'interrupted').length}
+        />
+        <StatCard 
+          icon="fa-forward" 
+          iconColor="gray" 
+          label="Skipped" 
+          value={scenarios.filter(s => s.status === 'skipped').length}
         />
       </div>
       
@@ -1540,6 +1532,30 @@ const ScenariosPage = ({ onViewScenario, onNavigate, onDeleteScenario }) => {
           >
             Running ({folderFilteredScenarios.filter(s => s.status === 'running').length})
           </button>
+          <button 
+            className={`filter-btn warning ${filter === 'pending' ? 'active' : ''}`}
+            onClick={() => setFilter('pending')}
+          >
+            Pending ({folderFilteredScenarios.filter(s => s.status === 'pending').length})
+          </button>
+          <button 
+            className={`filter-btn warning ${filter === 'cancelled' ? 'active' : ''}`}
+            onClick={() => setFilter('cancelled')}
+          >
+            Cancelled ({folderFilteredScenarios.filter(s => s.status === 'cancelled').length})
+          </button>
+          <button 
+            className={`filter-btn warning ${filter === 'interrupted' ? 'active' : ''}`}
+            onClick={() => setFilter('interrupted')}
+          >
+            Interrupted ({folderFilteredScenarios.filter(s => s.status === 'interrupted').length})
+          </button>
+          <button 
+            className={`filter-btn warning ${filter === 'skipped' ? 'active' : ''}`}
+            onClick={() => setFilter('skipped')}
+          >
+            Skipped ({folderFilteredScenarios.filter(s => s.status === 'skipped').length})
+          </button>
         </div>
         
         {/* Scenarios Grid */}
@@ -1576,7 +1592,7 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
     ? MOCK_DATA.executions.find(e => e.id === executionId)
     : MOCK_DATA.executions.find(e => e.scenarioId === scenarioId);
   const [expandedSteps, setExpandedSteps] = useState({});
-  const [activeTab, setActiveTab] = useState('steps');
+  const [activeTab, setActiveTab] = useState('live');
   const [isRunning, setIsRunning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [runStatus, setRunStatus] = useState(null);
@@ -1587,6 +1603,15 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
   const [editedObjective, setEditedObjective] = useState(scenario.objective);
   const [showTaskOutputModal, setShowTaskOutputModal] = useState(false);
   const [showTaskInputModal, setShowTaskInputModal] = useState(false);
+  
+  // Check if execution is already running and set state accordingly
+  useEffect(() => {
+    if (execution && execution.status === 'running' && execution.metadata?.browserUseTaskId) {
+      setIsRunning(true);
+      currentTaskIdRef.current = execution.metadata.browserUseTaskId;
+      setRunStatus('Task running...');
+    }
+  }, [execution]);
   
   // Scroll to top when scenario page loads
   useEffect(() => {
@@ -1979,53 +2004,48 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           <h1 className="page-title">Scenario Details</h1>
         </div>
         <div className="header-actions">
-          {isRunning ? (
-            <div className="running-status-container">
-              <div className="running-status-inline">
-                <i className="fas fa-spinner fa-spin"></i>
-                <span>{runStatus || 'Running...'}</span>
-              </div>
-              <button 
-                className="btn btn-danger btn-cancel"
-                onClick={handleCancelRun}
-                disabled={isCancelling}
-              >
-                <i className={`fas ${isCancelling ? 'fa-spinner fa-spin' : 'fa-stop'}`}></i>
-                {isCancelling ? 'Cancelling...' : 'Cancel Run'}
-              </button>
-            </div>
+          {/* Cancel button - only show when actively running */}
+          {isRunning && execution?.status === 'running' && (
+            <button 
+              className="btn btn-danger"
+              onClick={handleCancelRun}
+              disabled={isCancelling}
+            >
+              <i className={`fas ${isCancelling ? 'fa-spinner fa-spin' : 'fa-stop'}`}></i>
+              {isCancelling ? 'Cancelling...' : 'Cancel Run'}
+            </button>
+          )}
+          
+          {/* Only show Edit button if scenario has NOT been run */}
+          {!scenario.lastRun ? (
+            <button className="btn btn-secondary" onClick={() => onEditScenario && onEditScenario(scenario)}>
+              <i className="fas fa-edit"></i>
+              Edit
+            </button>
           ) : (
-            <>
-              {/* Only show Edit button if scenario has NOT been run */}
-              {!scenario.lastRun ? (
-                <button className="btn btn-secondary" onClick={() => onEditScenario && onEditScenario(scenario)}>
-                  <i className="fas fa-edit"></i>
-                  Edit
-                </button>
-              ) : (
-                <button className="btn btn-secondary" disabled title="Cannot edit a scenario that has been run">
-                  <i className="fas fa-edit"></i>
-                  Edit
-                </button>
-              )}
-              {/* Clone button - always enabled */}
-              <button className="btn btn-secondary" onClick={() => onCloneScenario && onCloneScenario(scenario)}>
-                <i className="fas fa-copy"></i>
-                Clone
-              </button>
-              {/* Only show Run Now button if scenario has NOT been run */}
-              {!scenario.lastRun ? (
-                <button className="btn btn-primary" onClick={handleRunScenario}>
-                  <i className="fas fa-play"></i>
-                  Run Now
-                </button>
-              ) : (
-                <button className="btn btn-primary" disabled title="Scenario has already been run">
-                  <i className="fas fa-play"></i>
-                  Run Now
-                </button>
-              )}
-            </>
+            <button className="btn btn-secondary" disabled title="Cannot edit a scenario that has been run">
+              <i className="fas fa-edit"></i>
+              Edit
+            </button>
+          )}
+          
+          {/* Clone button - always visible */}
+          <button className="btn btn-secondary" onClick={() => onCloneScenario && onCloneScenario(scenario)}>
+            <i className="fas fa-copy"></i>
+            Clone
+          </button>
+          
+          {/* Only show Run Now button if scenario has NOT been run */}
+          {!scenario.lastRun ? (
+            <button className="btn btn-primary" onClick={handleRunScenario}>
+              <i className="fas fa-play"></i>
+              Run Now
+            </button>
+          ) : (
+            <button className="btn btn-primary" disabled title="Scenario has already been run">
+              <i className="fas fa-play"></i>
+              Run Now
+            </button>
           )}
         </div>
       </div>
@@ -2133,19 +2153,6 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           </div>
         )}
         
-        {/* Execution Progress - shown when execution exists */}
-        {execution && (
-          <div className="execution-progress-section">
-            <ProgressBar 
-              percentage={execution.progress?.percentage || 0} 
-              status={execution.status}
-            />
-            <span className="progress-label">
-              Step {execution.progress?.currentStep || 0} of {execution.progress?.totalSteps || scenario.steps?.length || 0}
-            </span>
-          </div>
-        )}
-        
         <div className="objective-meta">
           <div className="meta-item">
             <i className="fas fa-list-ol"></i>
@@ -2208,11 +2215,11 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       {/* Tabs */}
       <div className="tabs mb-4">
         <button 
-          className={`tab ${activeTab === 'steps' ? 'active' : ''}`}
-          onClick={() => setActiveTab('steps')}
+          className={`tab ${activeTab === 'live' ? 'active' : ''}`}
+          onClick={() => setActiveTab('live')}
         >
-          <i className="fas fa-list-ol"></i>
-          User Defined Steps
+          <i className="fas fa-eye"></i>
+          Live
         </button>
         <button 
           className={`tab ${activeTab === 'agent' ? 'active' : ''}`}
@@ -2230,49 +2237,25 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
         </button>
       </div>
       
-      {/* User Defined Steps Tab Content */}
-      {activeTab === 'steps' && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">
-              <div className="hierarchy-indicator small">
-                <i className="fas fa-list-ol"></i>
-                <span>STEPS</span>
-              </div>
-              User-defined Steps
-            </h3>
-            <div className="card-actions">
-              <button className="btn btn-ghost btn-sm" onClick={expandAll}>
-                <i className="fas fa-expand-alt"></i>
-                Expand All
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={collapseAll}>
-                <i className="fas fa-compress-alt"></i>
-                Collapse All
-              </button>
+      {/* Live Browser Tab Content */}
+      {activeTab === 'live' && (
+        execution ? (
+          <LiveBrowserTab execution={execution} isRunning={isRunning} />
+        ) : (
+          <div className="card">
+            <div className="empty-state">
+              <i className="fas fa-eye"></i>
+              <h3>No Execution Data</h3>
+              <p>Run this scenario to see the live browser interaction.</p>
             </div>
           </div>
-          
-          <div className="steps-list">
-            {scenario.steps?.map((step) => (
-              <StepItem
-                key={step.id}
-                step={step}
-                stepResult={getStepResult(step.id)}
-                isExpanded={expandedSteps[step.id]}
-                onToggle={() => toggleStep(step.id)}
-                executionId={execution?.id}
-                onViewStepDetail={onViewStepDetail}
-              />
-            ))}
-          </div>
-        </div>
+        )
       )}
       
       {/* Agent View Tab Content */}
       {activeTab === 'agent' && (
         execution ? (
-          <AgentViewTab execution={execution} isRunning={isRunning} />
+          <AgentViewTab execution={execution} />
         ) : (
           <div className="card">
             <div className="empty-state">
@@ -2342,48 +2325,167 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
   );
 };
 
+// ===== Live Browser Tab Component - Real-time Browser View =====
+const LiveBrowserTab = ({ execution, isRunning }) => {
+  const [liveUrl, setLiveUrl] = React.useState(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [sessionStatus, setSessionStatus] = React.useState('unknown');
+  
+  // Fetch session liveUrl
+  React.useEffect(() => {
+    const fetchLiveUrl = async () => {
+      // Check if we already have liveUrl in metadata
+      if (execution?.metadata?.liveUrl) {
+        setLiveUrl(execution.metadata.liveUrl);
+        setIsLoading(false);
+        return;
+      }
+      
+      // If we have sessionId, fetch it
+      const sessionId = execution?.metadata?.browserUseSessionId || execution?.rawApiResponse?.sessionId;
+      if (!sessionId) {
+        setError('No session ID available');
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        setIsLoading(true);
+        setError(null);
+        const session = await BrowserUseAPI.getSession(sessionId);
+        setLiveUrl(session.liveUrl);
+        setSessionStatus(session.status);
+        
+        // Store liveUrl in execution metadata for future use
+        if (execution?.metadata) {
+          execution.metadata.liveUrl = session.liveUrl;
+        }
+        
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Error fetching session liveUrl:', err);
+        setError(err.message);
+        setIsLoading(false);
+      }
+    };
+    
+    fetchLiveUrl();
+    
+    // Refresh every 5 seconds if running
+    let interval;
+    if (isRunning) {
+      interval = setInterval(fetchLiveUrl, 5000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [execution, isRunning]);
+  
+  if (isLoading) {
+    return (
+      <div className="card">
+        <div className="empty-state">
+          <i className="fas fa-spinner fa-spin"></i>
+          <h3>Loading Live View</h3>
+          <p>Fetching session details...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="card">
+        <div className="empty-state">
+          <i className="fas fa-eye-slash"></i>
+          <h3>Nothing to Display</h3>
+        </div>
+      </div>
+    );
+  }
+  
+  // Check if execution was cancelled
+  if (execution?.status === 'cancelled') {
+    return (
+      <div className="card">
+        <div className="empty-state">
+          <i className="fas fa-eye-slash"></i>
+          <h3>Nothing to Display</h3>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!liveUrl) {
+    return (
+      <div className="card">
+        <div className="empty-state">
+          <i className="fas fa-eye-slash"></i>
+          <h3>Nothing to Display</h3>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="card">
+      <div className="card-header">
+        <h3 className="card-title">
+          <i className="fas fa-eye"></i>
+          Live Browser View
+        </h3>
+        <div className="card-actions">
+          {isRunning && (
+            <span className="status-badge running">
+              <i className="fas fa-circle"></i>
+              Live
+            </span>
+          )}
+          <a 
+            href={liveUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="btn btn-ghost btn-sm"
+          >
+            <i className="fas fa-external-link-alt"></i>
+            Open in New Tab
+          </a>
+        </div>
+      </div>
+      <div className="live-browser-container">
+        <iframe
+          src={liveUrl}
+          title="Live Browser View"
+          className="live-browser-iframe"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+        />
+      </div>
+      <div className="live-view-info">
+        <div className="info-item">
+          <i className="fas fa-info-circle"></i>
+          <span>This is a real-time view of the browser as the automation runs. You may need to authenticate if prompted.</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ===== Agent View Tab Component - Raw Browser Use API Response =====
-const AgentViewTab = ({ execution, isRunning }) => {
+const AgentViewTab = ({ execution }) => {
   const [expandedSteps, setExpandedSteps] = useState({});
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
-  const [previousStepCount, setPreviousStepCount] = useState(0);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const agentStepsEndRef = React.useRef(null);
   
   // Get raw API response if available
   const rawResponse = execution.rawApiResponse;
   const agentSteps = rawResponse?.steps || [];
   
-  // Manual refresh handler
-  const handleRefresh = () => {
-    setRefreshKey(prev => prev + 1);
-    // Show a brief notification or animation
-    const notification = document.createElement('div');
-    notification.className = 'refresh-notification';
-    notification.innerHTML = '<i class="fas fa-check-circle"></i> Agent view refreshed';
-    document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 2000);
-  };
-  
-  // Auto-expand and scroll to latest step when new steps arrive during live execution
-  useEffect(() => {
-    if (isRunning && agentSteps.length > previousStepCount) {
-      // Auto-expand the latest step
-      const latestStep = agentSteps[agentSteps.length - 1];
-      if (latestStep) {
-        setExpandedSteps(prev => ({
-          ...prev,
-          [latestStep.number || agentSteps.length]: true
-        }));
-        
-        // Scroll to the latest step after a short delay to ensure it's rendered
-        setTimeout(() => {
-          agentStepsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
-      }
-      setPreviousStepCount(agentSteps.length);
-    }
-  }, [agentSteps.length, isRunning, previousStepCount]);
+  // Reverse the order so latest step is first - memoized to prevent recreating on every render
+  const reversedAgentSteps = React.useMemo(() => {
+    return [...agentSteps].reverse();
+  }, [agentSteps]);
   
   const toggleStep = (stepNumber) => {
     setExpandedSteps(prev => ({
@@ -2394,8 +2496,8 @@ const AgentViewTab = ({ execution, isRunning }) => {
   
   const expandAll = () => {
     const allExpanded = {};
-    agentSteps.forEach(step => {
-      allExpanded[step.number] = true;
+    reversedAgentSteps.forEach((step, index) => {
+      allExpanded[step.number || index] = true;
     });
     setExpandedSteps(allExpanded);
   };
@@ -2478,22 +2580,8 @@ const AgentViewTab = ({ execution, isRunning }) => {
           <h3 className="card-title">
             <i className="fas fa-brain"></i>
             Agent Steps ({agentSteps.length})
-            {isRunning && agentSteps.length > 0 && (
-              <span className="live-indicator">
-                <i className="fas fa-circle"></i>
-                Live
-              </span>
-            )}
           </h3>
           <div className="card-actions">
-            <button 
-              className="btn btn-ghost btn-sm" 
-              onClick={handleRefresh}
-              title="Refresh agent steps"
-            >
-              <i className="fas fa-sync-alt"></i>
-              Refresh
-            </button>
             <button className="btn btn-ghost btn-sm" onClick={expandAll}>
               <i className="fas fa-expand-alt"></i>
               Expand All
@@ -2505,8 +2593,8 @@ const AgentViewTab = ({ execution, isRunning }) => {
           </div>
         </div>
         
-        <div className="agent-steps-list" key={refreshKey}>
-          {agentSteps.map((step, index) => (
+        <div className="agent-steps-list">
+          {reversedAgentSteps.map((step, index) => (
             <div key={step.number || index} className="agent-step-item">
               <div 
                 className="agent-step-header"
@@ -2515,9 +2603,6 @@ const AgentViewTab = ({ execution, isRunning }) => {
                 <div className="agent-step-number">
                   <i className="fas fa-brain"></i>
                   <span>Step {step.number || index + 1}</span>
-                  {isRunning && index === agentSteps.length - 1 && (
-                    <span className="badge-new">Latest</span>
-                  )}
                 </div>
                 <div className="agent-step-meta">
                   {step.url && (
@@ -2628,7 +2713,6 @@ const AgentViewTab = ({ execution, isRunning }) => {
               )}
             </div>
           ))}
-          <div ref={agentStepsEndRef} />
         </div>
       </div>
       
@@ -2656,46 +2740,54 @@ const ScreenshotsGalleryTab = ({ execution }) => {
   const rawResponse = execution.rawApiResponse;
   const agentSteps = rawResponse?.steps || [];
   
-  // Collect all screenshots from agent steps
-  const screenshots = agentSteps
-    .map((step, index) => ({
-      stepNumber: step.number || index + 1,
-      url: step.screenshotUrl,
-      pageUrl: step.url,
-      memory: step.memory,
-      nextGoal: step.nextGoal
-    }))
-    .filter(item => item.url);
+  // Collect all screenshots from agent steps - memoized to prevent recreating on every render
+  const screenshots = React.useMemo(() => {
+    return agentSteps
+      .map((step, index) => ({
+        stepNumber: step.number || index + 1,
+        url: step.screenshotUrl,
+        pageUrl: step.url,
+        memory: step.memory,
+        nextGoal: step.nextGoal
+      }))
+      .filter(item => item.url);
+  }, [agentSteps]);
   
   const openScreenshot = (url, index) => {
     setSelectedScreenshot(url);
     setSelectedIndex(index);
   };
   
-  const closeScreenshot = () => {
+  const closeScreenshot = React.useCallback(() => {
     setSelectedScreenshot(null);
-  };
+  }, []);
   
-  const goToPrev = (e) => {
+  const goToPrev = React.useCallback((e) => {
     if (e) e.stopPropagation();
-    if (selectedIndex > 0) {
-      const newIndex = selectedIndex - 1;
-      setSelectedIndex(newIndex);
-      setSelectedScreenshot(screenshots[newIndex].url);
-    }
-  };
+    setSelectedIndex(prev => {
+      if (prev > 0) {
+        const newIndex = prev - 1;
+        setSelectedScreenshot(screenshots[newIndex].url);
+        return newIndex;
+      }
+      return prev;
+    });
+  }, [screenshots]);
   
-  const goToNext = (e) => {
+  const goToNext = React.useCallback((e) => {
     if (e) e.stopPropagation();
-    if (selectedIndex < screenshots.length - 1) {
-      const newIndex = selectedIndex + 1;
-      setSelectedIndex(newIndex);
-      setSelectedScreenshot(screenshots[newIndex].url);
-    }
-  };
+    setSelectedIndex(prev => {
+      if (prev < screenshots.length - 1) {
+        const newIndex = prev + 1;
+        setSelectedScreenshot(screenshots[newIndex].url);
+        return newIndex;
+      }
+      return prev;
+    });
+  }, [screenshots]);
   
   // Keyboard navigation
-  useEffect(() => {
+  React.useEffect(() => {
     if (!selectedScreenshot) return;
     
     const handleKeyDown = (e) => {
@@ -2713,7 +2805,7 @@ const ScreenshotsGalleryTab = ({ execution }) => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedScreenshot, selectedIndex, screenshots.length]);
+  }, [selectedScreenshot, goToPrev, goToNext, closeScreenshot]);
   
   if (screenshots.length === 0) {
     return (
@@ -2833,7 +2925,6 @@ const HistoryPage = ({ onViewExecution, onViewFlowRun }) => {
                 <th>Execution ID</th>
                 <th>Objective</th>
                 <th>Status</th>
-                <th>Progress</th>
                 <th>Duration</th>
                 <th>Started</th>
                 <th>Source</th>
@@ -2857,12 +2948,6 @@ const HistoryPage = ({ onViewExecution, onViewFlowRun }) => {
                     </div>
                   </td>
                   <td><StatusBadge status={exec.status} /></td>
-                  <td>
-                    <ProgressBar 
-                      percentage={exec.progress.percentage} 
-                      status={exec.status}
-                    />
-                  </td>
                   <td>{Utils.formatDuration(exec.duration)}</td>
                   <td>{Utils.formatRelativeTime(exec.startTime)}</td>
                   <td>
@@ -4195,11 +4280,6 @@ const StepDetailHeader = ({ step, stepResult, execution, onBack }) => {
             <span>Sub-steps:</span>
             <strong>{completedSubSteps}/{subSteps.length}</strong>
           </div>
-        </div>
-        
-        <div className="progress-section">
-          <label>Step Progress</label>
-          <ProgressBar percentage={percentage} status={stepResult?.status || step.status} />
         </div>
       </div>
       

@@ -197,6 +197,25 @@ const BrowserUseAPI = {
   },
 
   /**
+   * Get session details including liveUrl
+   * @param {string} sessionId - The session UUID
+   * @returns {Promise<Object>} Session details with liveUrl
+   */
+  getSession: async (sessionId) => {
+    const response = await fetch(`${BrowserUseAPI.BASE_URL}/sessions/${sessionId}`, {
+      method: 'GET',
+      headers: BrowserUseAPI.getHeaders()
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Failed to get session: ${response.status}`);
+    }
+
+    return await response.json();
+  },
+
+  /**
    * Poll task until completion
    * @param {string} taskId - The task UUID
    * @param {Function} onUpdate - Callback for status updates
@@ -361,7 +380,8 @@ const BrowserUseAPI = {
         browserUseTaskId: taskResult.id,
         browserUseSessionId: taskResult.sessionId,
         llm: taskResult.llm,
-        browserUseVersion: taskResult.browserUseVersion
+        browserUseVersion: taskResult.browserUseVersion,
+        liveUrl: null // Will be populated when session is fetched
       },
       stepResults: stepResults,
       logs: [
