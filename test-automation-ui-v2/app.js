@@ -18,7 +18,10 @@ const Sidebar = ({ activePage, onNavigate }) => {
         <div className="sidebar-logo-icon">
           <i className="fas fa-robot"></i>
         </div>
-        <span className="sidebar-logo-text">Trinamix</span>
+        <div className="sidebar-logo-content">
+          <span className="sidebar-logo-text">TestAutomate</span>
+          <span className="sidebar-logo-subtitle">by Trinamix</span>
+        </div>
         <span className="version-badge">v2</span>
       </div>
       
@@ -356,10 +359,6 @@ const Header = ({ breadcrumb, searchQuery, onSearchChange, searchResults, onSele
             </div>
           )}
         </div>
-        
-        <button className="icon-button">
-          <i className="fas fa-bell"></i>
-        </button>
         
         <div className="user-avatar">TM</div>
       </div>
@@ -7933,27 +7932,27 @@ const App = () => {
   const getBreadcrumb = () => {
     switch (activePage) {
       case 'dashboard':
-        return ['Home', 'Dashboard'];
+        return ['TestAutomate', 'Dashboard'];
       case 'scenarios':
-        return ['Home', 'Scenarios'];
+        return ['TestAutomate', 'Scenarios'];
       case 'scenario-detail':
         // Show different breadcrumb based on where user came from
         if (previousPage === 'history') {
-          return ['Home', 'Run History', 'Execution Details'];
+          return ['TestAutomate', 'Run History', 'Execution Details'];
         }
-        return ['Home', 'Scenarios', 'Details'];
+        return ['TestAutomate', 'Scenarios', 'Details'];
       case 'step-detail':
-        return ['Home', 'Scenario', 'Step Details'];
+        return ['TestAutomate', 'Scenario', 'Step Details'];
       case 'history':
-        return ['Home', 'Run History'];
+        return ['TestAutomate', 'Run History'];
       case 'create-scenario':
-        return editingScenario ? ['Home', 'Scenarios', 'Edit Scenario'] : cloningScenario ? ['Home', 'Scenarios', 'Clone Scenario'] : ['Home', 'New Scenario'];
+        return editingScenario ? ['TestAutomate', 'Scenarios', 'Edit Scenario'] : cloningScenario ? ['TestAutomate', 'Scenarios', 'Clone Scenario'] : ['TestAutomate', 'New Scenario'];
       case 'flow-builder':
-        return ['Home', 'Flow Builder'];
+        return ['TestAutomate', 'Flow Builder'];
       case 'variables':
-        return ['Home', 'Settings', 'Variables'];
+        return ['TestAutomate', 'Settings', 'Variables'];
       default:
-        return ['Home'];
+        return ['TestAutomate'];
     }
   };
   

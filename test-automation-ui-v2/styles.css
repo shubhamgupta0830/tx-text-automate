@@ -166,10 +166,23 @@ code {
   font-size: var(--text-lg);
 }
 
+.sidebar-logo-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
 .sidebar-logo-text {
   font-weight: var(--font-bold);
   font-size: var(--text-lg);
   color: var(--text);
+  line-height: 1.2;
+}
+
+.sidebar-logo-subtitle {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  font-weight: var(--font-normal);
 }
 
 .version-badge {
