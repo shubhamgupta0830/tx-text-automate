@@ -2074,6 +2074,34 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
                 <i className="fas fa-hashtag"></i>
                 <span>ID: {execution.id}</span>
               </div>
+              {execution.metadata?.browserUseSessionId && (
+                <div className="meta-item session-id-item">
+                  <i className="fas fa-robot"></i>
+                  <span>Session ID: {execution.metadata.browserUseSessionId}</span>
+                  <button 
+                    className="btn-icon copy-session-id-btn"
+                    onClick={async () => {
+                      const success = await Utils.copyToClipboard(execution.metadata.browserUseSessionId);
+                      if (success) {
+                        // Show a temporary success indicator
+                        const btn = document.activeElement;
+                        const originalIcon = btn.innerHTML;
+                        btn.innerHTML = '<i class="fas fa-check"></i>';
+                        btn.style.color = 'var(--success)';
+                        setTimeout(() => {
+                          btn.innerHTML = originalIcon;
+                          btn.style.color = '';
+                        }, 1500);
+                      } else {
+                        alert('Failed to copy session ID to clipboard');
+                      }
+                    }}
+                    title="Copy session ID to clipboard"
+                  >
+                    <i className="fas fa-copy"></i>
+                  </button>
+                </div>
+              )}
               <div className="meta-item">
                 <i className="fas fa-clock"></i>
                 <span>Started: {Utils.formatDate(execution.startTime)}</span>
