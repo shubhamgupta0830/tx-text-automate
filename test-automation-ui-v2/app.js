@@ -1480,10 +1480,13 @@ const ScenariosPage = ({ onViewScenario, onNavigate, onDeleteScenario }) => {
 // ===== Scenario Detail Page =====
 const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail, onEditScenario, onCloneScenario, onViewFlowRun }) => {
   const scenario = MOCK_DATA.scenarios.find(s => s.id === scenarioId);
-  // Find execution by executionId if provided, otherwise find by scenarioId
-  const execution = executionId 
+  // Find execution by executionId if provided, otherwise find by scenarioId, then fallback to lastRun
+  const execution = executionId
     ? MOCK_DATA.executions.find(e => e.id === executionId)
-    : MOCK_DATA.executions.find(e => e.scenarioId === scenarioId);
+    : MOCK_DATA.executions.find(e => e.scenarioId === scenarioId)
+      || (scenario?.lastRun?.executionId
+          ? MOCK_DATA.executions.find(e => e.id === scenario.lastRun.executionId)
+          : null);
   const [expandedSteps, setExpandedSteps] = useState({});
   const [activeTab, setActiveTab] = useState('live');
   const [isRunning, setIsRunning] = useState(false);
@@ -1508,13 +1511,17 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
     }
   }, [execution]);
 
-  // Auto-refresh while a run is active (so poll logs from other components appear live)
+  // Auto-refresh while a run is active — re-render to pick up execution data from MOCK_DATA
+  // Covers: logs tab display, and when execution is null but scenario is running (navigated from list)
   useEffect(() => {
-    const execStatus = MOCK_DATA.executions.find(e => e.id === executionId)?.status;
-    if (execStatus !== 'running') return;
+    const scenarioRunning = scenario?.status === 'running';
+    const executionRunning = execution?.status === 'running';
+    if (!scenarioRunning && !executionRunning) return;
+    // Only auto-refresh on logs tab, or when execution is null (need to discover it)
+    if (activeTab !== 'logs' && execution) return;
     const interval = setInterval(() => forceUpdate(n => n + 1), 2000);
     return () => clearInterval(interval);
-  }, [executionId]);
+  }, [execution, activeTab, scenario?.status]);
   
   // Scroll to top when scenario page loads
   useEffect(() => {
@@ -8237,7 +8244,8 @@ const App = () => {
         );
       case 'scenario-detail':
         return (
-          <ScenarioDetailPage 
+          <ScenarioDetailPage
+            key={refreshKey}
             scenarioId={selectedScenarioId}
             executionId={selectedExecutionId}
             onBack={handleBackFromScenarioDetail}
