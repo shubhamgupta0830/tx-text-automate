@@ -1496,6 +1496,8 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
   const [editedObjective, setEditedObjective] = useState(scenario.objective);
   const [showTaskOutputModal, setShowTaskOutputModal] = useState(false);
   const [showTaskInputModal, setShowTaskInputModal] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(BROWSER_USE_MODELS[0].id);
+  const [useFlashMode, setUseFlashMode] = useState(true);
   
   // Check if execution is already running and set state accordingly
   useEffect(() => {
@@ -1505,6 +1507,14 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       setRunStatus('Task running...');
     }
   }, [execution]);
+
+  // Auto-refresh while a run is active (so poll logs from other components appear live)
+  useEffect(() => {
+    const execStatus = MOCK_DATA.executions.find(e => e.id === executionId)?.status;
+    if (execStatus !== 'running') return;
+    const interval = setInterval(() => forceUpdate(n => n + 1), 2000);
+    return () => clearInterval(interval);
+  }, [executionId]);
   
   // Scroll to top when scenario page loads
   useEffect(() => {
@@ -1600,7 +1610,9 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       
       // Create the task
       const createResult = await BrowserUseAPI.createTask(taskPrompt, {
-        maxSteps: Math.max(50, scenario.steps.length * 10),
+        llm: selectedModel,
+        flash: useFlashMode,
+        maxSteps: Math.max(MAX_STEPS_MINIMUM, scenario.steps.length * MAX_STEPS_PER_SCENARIO_STEP),
         highlightElements: true,
         vision: true,
         metadata: {
@@ -1639,23 +1651,37 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           if (isCancelledRef.current) {
             throw new Error('Run cancelled by user');
           }
-          
+
           const stepCount = taskUpdate.steps?.length || 0;
           setRunStatus(`Executing... (${stepCount} browser actions completed)`);
-          
+
           // Update the execution in MOCK_DATA with live progress
           const execIdx = MOCK_DATA.executions.findIndex(e => e.id === newExecutionId);
           if (execIdx >= 0) {
+            // Preserve existing logs before transforming (transformTaskToExecution replaces the object)
+            const existingLogs = [...(MOCK_DATA.executions[execIdx].logs || [])];
+            existingLogs.push({
+              timestamp: new Date().toISOString(),
+              level: 'debug',
+              message: `[Poll] status=${taskUpdate.status} | steps=${stepCount} | output=${taskUpdate.output || '—'}`
+            });
+            existingLogs.push({
+              timestamp: new Date().toISOString(),
+              level: 'raw',
+              message: JSON.stringify(taskUpdate, null, 2)
+            });
+
             const updatedExecution = BrowserUseAPI.transformTaskToExecution(
-              taskUpdate, 
-              scenario, 
+              taskUpdate,
+              scenario,
               newExecutionId
             );
+            updatedExecution.logs = existingLogs;
             MOCK_DATA.executions[execIdx] = updatedExecution;
-            
+
             // Persist progress updates to localStorage
             StorageHelper.saveExecutions(MOCK_DATA.executions);
-            
+
             forceUpdate(n => n + 1);
           }
         },
@@ -1670,14 +1696,16 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       
       // Transform final result
       const finalExecution = BrowserUseAPI.transformTaskToExecution(
-        finalResult, 
-        scenario, 
+        finalResult,
+        scenario,
         newExecutionId
       );
-      
-      // Update MOCK_DATA with final result
+
+      // Update MOCK_DATA with final result, preserving accumulated poll logs
       const finalExecIndex = MOCK_DATA.executions.findIndex(e => e.id === newExecutionId);
       if (finalExecIndex >= 0) {
+        const accumulatedLogs = MOCK_DATA.executions[finalExecIndex].logs || [];
+        finalExecution.logs = [...accumulatedLogs, ...finalExecution.logs];
         MOCK_DATA.executions[finalExecIndex] = finalExecution;
       }
       
@@ -1775,7 +1803,7 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
       currentTaskIdRef.current = null;
       forceUpdate(n => n + 1);
       
-      alert(`❌ Error executing scenario: ${error.message}`);
+      alert(`❌ Error executing scenario: ${typeof error?.message === 'string' ? error.message : JSON.stringify(error)}`);
     }
   };
   
@@ -1960,6 +1988,49 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
         </div>
       </div>
       
+      {/* Run Configuration Card */}
+      {!scenario.lastRun && (
+        <div className="run-config-card card mb-4">
+          <div className="run-config-header">
+            <i className="fas fa-sliders-h"></i>
+            <span>Run Configuration</span>
+          </div>
+          <div className="run-config-body">
+            <div className="run-config-row">
+              <div className="run-config-field">
+                <label className="run-config-label">Model</label>
+                <div className="model-select-wrapper">
+                  <select
+                    className="model-select"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                  >
+                    {BROWSER_USE_MODELS.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}  —  {m.hint}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="run-config-field run-config-field--flash">
+                <label className="run-config-label">Flash Mode</label>
+                <div className="flash-toggle-row">
+                  <button
+                    className={`flash-toggle ${useFlashMode ? 'flash-toggle--on' : ''}`}
+                    onClick={() => setUseFlashMode(v => !v)}
+                    aria-pressed={useFlashMode}
+                  >
+                    <span className="flash-toggle-thumb" />
+                  </button>
+                  <span className="flash-toggle-hint">
+                    {useFlashMode ? 'Enabled — faster execution with Gemini Flash' : 'Disabled'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Objective Card */}
       <div className="objective-card card mb-4">
         <div className="objective-content">
@@ -2166,12 +2237,22 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           <i className="fas fa-robot"></i>
           Agent View
         </button>
-        <button 
+        <button
           className={`tab ${activeTab === 'screenshots' ? 'active' : ''}`}
           onClick={() => setActiveTab('screenshots')}
         >
           <i className="fas fa-camera"></i>
           Screenshots
+        </button>
+        <button
+          className={`tab ${activeTab === 'logs' ? 'active' : ''}`}
+          onClick={() => setActiveTab('logs')}
+        >
+          <i className="fas fa-terminal"></i>
+          Logs
+          {execution?.logs?.length > 0 && (
+            <span className="tab-badge">{execution.logs.length}</span>
+          )}
         </button>
       </div>
       
@@ -2219,7 +2300,21 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           </div>
         )
       )}
-      
+
+      {activeTab === 'logs' && (
+        execution ? (
+          <ExecutionLogsTab logs={execution.logs} />
+        ) : (
+          <div className="card">
+            <div className="empty-state">
+              <i className="fas fa-terminal"></i>
+              <h3>No Execution Data</h3>
+              <p>Run this scenario to see API logs.</p>
+            </div>
+          </div>
+        )
+      )}
+
       {/* Task Output Modal */}
       {showTaskOutputModal && execution?.rawApiResponse?.output && (
         <div className="modal-overlay" onClick={() => setShowTaskOutputModal(false)}>
@@ -2259,6 +2354,70 @@ const ScenarioDetailPage = ({ scenarioId, executionId, onBack, onViewStepDetail,
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+// ===== Execution Logs Tab — shows poll-by-poll API responses for debugging =====
+const ExecutionLogsTab = ({ logs = [] }) => {
+  const [levelFilter, setLevelFilter] = React.useState('all');
+  const [expandedRaw, setExpandedRaw] = React.useState({});
+  const bottomRef = React.useRef(null);
+
+  const LEVEL_COLORS = { info: 'log-info', debug: 'log-debug', warn: 'log-warn', error: 'log-error', raw: 'log-raw' };
+
+  const filtered = levelFilter === 'all' ? logs : logs.filter(l => l.level === levelFilter);
+
+  const toggleRaw = (i) => setExpandedRaw(prev => ({ ...prev, [i]: !prev[i] }));
+
+  const formatTime = (ts) => {
+    try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 2 }); }
+    catch { return ts; }
+  };
+
+  return (
+    <div className="card exec-logs-card">
+      <div className="card-header">
+        <h3 className="card-title"><i className="fas fa-terminal"></i> API Logs</h3>
+        <div className="exec-logs-filters">
+          {['all', 'info', 'debug', 'warn', 'error', 'raw'].map(lvl => (
+            <button
+              key={lvl}
+              className={`exec-log-filter-btn ${lvl} ${levelFilter === lvl ? 'active' : ''}`}
+              onClick={() => setLevelFilter(lvl)}
+            >
+              {lvl === 'all' ? 'All' : lvl.charAt(0).toUpperCase() + lvl.slice(1)}
+              {lvl !== 'all' && <span className="exec-log-filter-count">{logs.filter(l => l.level === lvl).length}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="exec-logs-body">
+        {filtered.length === 0 ? (
+          <div className="exec-logs-empty">No log entries{levelFilter !== 'all' ? ` for level "${levelFilter}"` : ''}.</div>
+        ) : (
+          filtered.map((log, i) => (
+            <div key={i} className={`exec-log-entry ${LEVEL_COLORS[log.level] || 'log-info'}`}>
+              <span className="exec-log-time">{formatTime(log.timestamp)}</span>
+              <span className={`exec-log-badge ${log.level}`}>{log.level}</span>
+              {log.level === 'raw' ? (
+                <span className="exec-log-raw-toggle">
+                  <button className="exec-log-raw-btn" onClick={() => toggleRaw(i)}>
+                    <i className={`fas fa-chevron-${expandedRaw[i] ? 'up' : 'down'}`}></i>
+                    {expandedRaw[i] ? 'Collapse' : 'Expand'} API Response
+                  </button>
+                  {expandedRaw[i] && (
+                    <pre className="exec-log-raw-pre">{log.message}</pre>
+                  )}
+                </span>
+              ) : (
+                <span className="exec-log-message">{log.message}</span>
+              )}
+            </div>
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 };
@@ -2955,11 +3114,13 @@ const CreateScenarioPage = ({ onBack, onNavigate, onScenarioCreated, editingScen
   const [isCancelling, setIsCancelling] = useState(false);
   const [runStatus, setRunStatus] = useState(null);
   const [runProgress, setRunProgress] = useState(null);
+  const [selectedModel, setSelectedModel] = useState(BROWSER_USE_MODELS[0].id);
+  const [useFlashMode, setUseFlashMode] = useState(true);
   const currentTaskIdRef = React.useRef(null);
   const currentExecutionRef = React.useRef(null);
   const currentScenarioRef = React.useRef(null);
   const isCancelledRef = React.useRef(false);
-  
+
   // Variable selector state
   const [variables, setVariables] = useState([]);
   const [showVariableSelector, setShowVariableSelector] = useState(false);
@@ -3508,7 +3669,9 @@ Click Actions → Open`;
       
       // Create the task
       const createResult = await BrowserUseAPI.createTask(taskPrompt, {
-        maxSteps: Math.max(50, newSteps.length * 10),
+        llm: selectedModel,
+        flash: useFlashMode,
+        maxSteps: Math.max(MAX_STEPS_MINIMUM, newSteps.length * MAX_STEPS_PER_SCENARIO_STEP),
         highlightElements: true,
         vision: true,
         metadata: {
@@ -3555,9 +3718,22 @@ Click Actions → Open`;
           // Update the execution in MOCK_DATA with live progress
           const execIndex = MOCK_DATA.executions.findIndex(e => e.id === newExecutionId);
           if (execIndex >= 0) {
+            const existingLogs = [...(MOCK_DATA.executions[execIndex].logs || [])];
+            existingLogs.push({
+              timestamp: new Date().toISOString(),
+              level: 'debug',
+              message: `[Poll] status=${taskUpdate.status} | steps=${stepCount} | output=${taskUpdate.output || '—'}`
+            });
+            existingLogs.push({
+              timestamp: new Date().toISOString(),
+              level: 'raw',
+              message: JSON.stringify(taskUpdate, null, 2)
+            });
+
             const updatedExecution = BrowserUseAPI.transformTaskToExecution(taskUpdate, newScenario, newExecutionId);
+            updatedExecution.logs = existingLogs;
             MOCK_DATA.executions[execIndex] = updatedExecution;
-            
+
             // Persist progress updates to localStorage
             StorageHelper.saveExecutions(MOCK_DATA.executions);
           }
@@ -3565,18 +3741,20 @@ Click Actions → Open`;
         2000,
         600000
       );
-      
+
       // Check if cancelled after polling completes
       if (isCancelledRef.current) {
         return; // Already handled in handleCancelRun
       }
-      
-      // Transform final result
+
+      // Transform final result, preserving accumulated poll logs
       const finalExecution = BrowserUseAPI.transformTaskToExecution(finalResult, newScenario, newExecutionId);
-      
+
       // Update MOCK_DATA with final result
       const execIndex = MOCK_DATA.executions.findIndex(e => e.id === newExecutionId);
       if (execIndex >= 0) {
+        const accumulatedLogs = MOCK_DATA.executions[execIndex].logs || [];
+        finalExecution.logs = [...accumulatedLogs, ...finalExecution.logs];
         MOCK_DATA.executions[execIndex] = finalExecution;
       }
       
@@ -3678,7 +3856,7 @@ Click Actions → Open`;
       currentExecutionRef.current = null;
       currentScenarioRef.current = null;
       
-      alert(`❌ Error executing scenario: ${error.message}\n\nThe scenario has been created but execution failed.`);
+      alert(`❌ Error executing scenario: ${typeof error?.message === 'string' ? error.message : JSON.stringify(error)}\n\nThe scenario has been created but execution failed.`);
       onNavigate('scenarios');
     }
   };
@@ -3769,6 +3947,49 @@ Click Actions → Open`;
       <div className="create-scenario-layout">
         {/* Input Section */}
         <div className="input-section">
+          {/* Run Configuration Card — above folder so it's visible without scrolling */}
+          {!isEditMode && (
+            <div className="run-config-card card mb-4">
+              <div className="run-config-header">
+                <i className="fas fa-sliders-h"></i>
+                <span>Run Configuration</span>
+              </div>
+              <div className="run-config-body">
+                <div className="run-config-row">
+                  <div className="run-config-field">
+                    <label className="run-config-label">Model</label>
+                    <div className="model-select-wrapper">
+                      <select
+                        className="model-select"
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                      >
+                        {BROWSER_USE_MODELS.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}  —  {m.hint}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="run-config-field run-config-field--flash">
+                    <label className="run-config-label">Flash Mode</label>
+                    <div className="flash-toggle-row">
+                      <button
+                        className={`flash-toggle ${useFlashMode ? 'flash-toggle--on' : ''}`}
+                        onClick={() => setUseFlashMode(v => !v)}
+                        aria-pressed={useFlashMode}
+                      >
+                        <span className="flash-toggle-thumb" />
+                      </button>
+                      <span className="flash-toggle-hint">
+                        {useFlashMode ? 'Enabled — faster execution with Gemini Flash' : 'Disabled'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Folder Selection Card */}
           <div className="card mb-4">
             <div className="card-header">
@@ -6156,7 +6377,7 @@ const FlowBuilderPage = ({ onNavigate, onViewExecution, targetFlowRunId, onClear
       
       // Create the task via Browser Use API
       const createResult = await BrowserUseAPI.createTask(taskPrompt, {
-        maxSteps: Math.max(50, scenario.steps.length * 10),
+        maxSteps: Math.max(MAX_STEPS_MINIMUM, scenario.steps.length * MAX_STEPS_PER_SCENARIO_STEP),
         highlightElements: true,
         vision: true,
         metadata: {
@@ -7703,8 +7924,8 @@ const App = () => {
           // Check task status via API
           const taskStatus = await BrowserUseAPI.getTask(task.taskId);
           
-          // Only update if task is finished or stopped
-          if (taskStatus.status === 'finished' || taskStatus.status === 'stopped') {
+          // Only update if task is finished, stopped, or failed
+          if (taskStatus.status === 'finished' || taskStatus.status === 'stopped' || taskStatus.status === 'failed') {
             console.log(`Task ${task.taskId} completed with status: ${taskStatus.status}`);
             
             // Find the scenario and execution
@@ -7714,7 +7935,11 @@ const App = () => {
             if (scenario && execIndex >= 0) {
               // Transform the final task result to execution
               const finalExecution = BrowserUseAPI.transformTaskToExecution(taskStatus, scenario, task.executionId);
-              
+
+              // Preserve accumulated poll logs
+              const existingLogs = MOCK_DATA.executions[execIndex].logs || [];
+              finalExecution.logs = [...existingLogs, ...finalExecution.logs];
+
               // Update execution
               MOCK_DATA.executions[execIndex] = finalExecution;
               
@@ -7763,6 +7988,9 @@ const App = () => {
               const scenario = MOCK_DATA.scenarios.find(s => s.id === task.scenarioId);
               if (scenario) {
                 const updatedExecution = BrowserUseAPI.transformTaskToExecution(taskStatus, scenario, task.executionId);
+                // Preserve accumulated poll logs — don't wipe them on background refresh
+                const existingLogs = MOCK_DATA.executions[execIndex].logs || [];
+                updatedExecution.logs = existingLogs;
                 MOCK_DATA.executions[execIndex] = updatedExecution;
                 StorageHelper.saveExecutions(MOCK_DATA.executions);
               }

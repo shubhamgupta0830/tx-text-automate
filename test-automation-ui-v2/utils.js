@@ -137,6 +137,87 @@ const Utils = {
 };
 
 // ===== Browser Use API Service =====
+const MAX_STEPS_PER_SCENARIO_STEP = 20;
+const MAX_STEPS_MINIMUM = 50;
+
+// Model IDs sourced from Browser Use Cloud API docs (SupportedLLMs schema)
+// https://docs.cloud.browser-use.com/api-v2/tasks/create-task.md
+const BROWSER_USE_MODELS = [
+  {
+    id: 'gemini-flash-latest',
+    name: 'Gemini Flash',
+    hint: 'Fast & cost-effective general-purpose model'
+  },
+  {
+    id: 'browser-use-2.0',
+    name: 'Browser Use 2.0',
+    hint: 'Custom-trained for browser automation, 15x cheaper & 6x faster'
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    hint: 'Best balance of speed & accuracy for most tasks'
+  },
+  {
+    id: 'gemini-flash-latest',
+    name: 'Gemini Flash',
+    hint: 'Fast & cost-effective general-purpose model'
+  },
+  {
+    id: 'gemini-flash-lite-latest',
+    name: 'Gemini Flash Lite',
+    hint: 'Lightest & fastest Gemini — ideal for simple tasks'
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    hint: 'Highest Gemini accuracy for complex reasoning & long workflows'
+  },
+  {
+    id: 'gpt-4.1',
+    name: 'GPT-4.1',
+    hint: 'Strong reasoning — great for complex multi-step workflows'
+  },
+  {
+    id: 'gpt-4.1-mini',
+    name: 'GPT-4.1 Mini',
+    hint: 'Affordable & fast — good for straightforward tasks'
+  },
+  {
+    id: 'gpt-4o',
+    name: 'GPT-4o',
+    hint: 'Proven reliability for complex workflows & edge cases'
+  },
+  {
+    id: 'o3',
+    name: 'o3',
+    hint: 'Advanced reasoning — best for highly complex tasks'
+  },
+  {
+    id: 'o4-mini',
+    name: 'o4-mini',
+    hint: 'Fast reasoning — good balance of speed & intelligence'
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
+    hint: 'Latest Claude — best for nuanced instructions & careful analysis'
+  },
+  {
+    id: 'claude-sonnet-4-5-20250929',
+    name: 'Claude Sonnet 4.5',
+    hint: 'Strong Claude model for reading-heavy & analytical tasks'
+  },
+];
+
+// Normalize API error details — FastAPI returns detail as array or string
+const formatApiError = (detail, fallback) => {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+  return JSON.stringify(detail);
+};
+
 const BrowserUseAPI = {
   // API Configuration
   API_KEY: 'bu_CMx8eOdVbfDbcQcTl_FdozsaGfR3hV3O_l65Is4Erg0',
@@ -161,6 +242,7 @@ const BrowserUseAPI = {
       maxSteps: options.maxSteps || 100,
       highlightElements: options.highlightElements ?? true,
       vision: options.vision ?? true,
+      ...(options.flash !== undefined && { flashMode: options.flash }),
       ...(options.startUrl && { startUrl: options.startUrl }),
       ...(options.sessionId && { sessionId: options.sessionId }),
       ...(options.metadata && { metadata: options.metadata })
@@ -174,7 +256,7 @@ const BrowserUseAPI = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to create task: ${response.status}`);
+      throw new Error(formatApiError(errorData.detail, `Failed to create task: ${response.status}`));
     }
 
     return await response.json();
@@ -193,7 +275,7 @@ const BrowserUseAPI = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to get task: ${response.status}`);
+      throw new Error(formatApiError(errorData.detail, `Failed to get task: ${response.status}`));
     }
 
     return await response.json();
@@ -215,7 +297,7 @@ const BrowserUseAPI = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || errorData.message || `Failed to stop task: ${response.status}`);
+      throw new Error(formatApiError(errorData.detail || errorData.message, `Failed to stop task: ${response.status}`));
     }
 
     return await response.json();
@@ -234,7 +316,7 @@ const BrowserUseAPI = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Failed to get session: ${response.status}`);
+      throw new Error(formatApiError(errorData.detail, `Failed to get session: ${response.status}`));
     }
 
     return await response.json();
@@ -258,8 +340,8 @@ const BrowserUseAPI = {
         onUpdate(task);
       }
       
-      // Check if task is complete (finished or stopped)
-      if (task.status === 'finished' || task.status === 'stopped') {
+      // Check if task is complete (finished, stopped, or failed)
+      if (task.status === 'finished' || task.status === 'stopped' || task.status === 'failed') {
         return task;
       }
       
@@ -349,7 +431,9 @@ const BrowserUseAPI = {
       status = taskResult.isSuccess || taskResult.judgeVerdict ? 'passed' : 'failed';
     } else if (taskResult.status === 'stopped') {
       status = 'failed';
-    } else if (taskResult.status === 'started') {
+    } else if (taskResult.status === 'failed') {
+      status = 'failed';
+    } else if (taskResult.status === 'started' || taskResult.status === 'running') {
       status = 'running';
     }
     
@@ -390,7 +474,7 @@ const BrowserUseAPI = {
       scenarioObjective: scenario.objective,
       status: status,
       startTime: startTime,
-      endTime: taskResult.status === 'finished' || taskResult.status === 'stopped' ? endTime : null,
+      endTime: taskResult.status === 'finished' || taskResult.status === 'stopped' || taskResult.status === 'failed' ? endTime : null,
       duration: duration,
       progress: {
         currentStep: completedSteps,
