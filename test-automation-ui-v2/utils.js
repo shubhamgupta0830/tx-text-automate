@@ -2,6 +2,11 @@
  * Utility Functions for Test Automation UI v2
  */
 
+// ─── App PIN Configuration ────────────────────────────────────────────────────
+// Set to null or '' to disable PIN protection entirely.
+const APP_PIN = '1030';
+// ─────────────────────────────────────────────────────────────────────────────
+
 const Utils = {
   // Format duration in milliseconds to human-readable string
   formatDuration: (ms) => {

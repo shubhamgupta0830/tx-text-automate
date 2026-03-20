@@ -7792,8 +7792,74 @@ const FlowBuilderPage = ({ onNavigate, onViewExecution, targetFlowRunId, onClear
   );
 };
 
+// ===== PIN Gate Component =====
+const PIN_SESSION_KEY = 'ta_pin_unlocked';
+
+const PinGate = ({ onUnlock }) => {
+  const [digits, setDigits] = React.useState(['', '', '', '']);
+  const [error, setError] = React.useState(false);
+  const inputRefs = [React.useRef(), React.useRef(), React.useRef(), React.useRef()];
+
+  React.useEffect(() => { inputRefs[0].current && inputRefs[0].current.focus(); }, []);
+
+  const handleChange = (i, val) => {
+    if (!/^\d?$/.test(val)) return;
+    const next = [...digits];
+    next[i] = val;
+    setDigits(next);
+    setError(false);
+    if (val && i < 3) inputRefs[i + 1].current.focus();
+    if (val && i === 3) {
+      const entered = [...next.slice(0, 3), val].join('');
+      if (entered === String(APP_PIN)) {
+        sessionStorage.setItem(PIN_SESSION_KEY, '1');
+        onUnlock();
+      } else {
+        setError(true);
+        setDigits(['', '', '', '']);
+        setTimeout(() => inputRefs[0].current && inputRefs[0].current.focus(), 50);
+      }
+    }
+  };
+
+  const handleKeyDown = (i, e) => {
+    if (e.key === 'Backspace' && !digits[i] && i > 0) {
+      inputRefs[i - 1].current.focus();
+    }
+  };
+
+  return (
+    React.createElement('div', { className: 'pin-gate-overlay' },
+      React.createElement('div', { className: 'pin-gate-card' },
+        React.createElement('div', { className: 'pin-gate-logo' }, 'TA'),
+        React.createElement('h2', { className: 'pin-gate-title' }, 'Enter PIN'),
+        React.createElement('p', { className: 'pin-gate-subtitle' }, 'This app is PIN protected'),
+        React.createElement('div', { className: `pin-gate-inputs${error ? ' pin-error' : ''}` },
+          digits.map((d, i) =>
+            React.createElement('input', {
+              key: i,
+              ref: inputRefs[i],
+              className: 'pin-digit',
+              type: 'password',
+              inputMode: 'numeric',
+              maxLength: 1,
+              value: d,
+              onChange: e => handleChange(i, e.target.value),
+              onKeyDown: e => handleKeyDown(i, e)
+            })
+          )
+        ),
+        error && React.createElement('p', { className: 'pin-gate-error' }, 'Incorrect PIN')
+      )
+    )
+  );
+};
+
 // ===== Main App Component =====
 const App = () => {
+  const [unlocked, setUnlocked] = useState(
+    !APP_PIN || sessionStorage.getItem(PIN_SESSION_KEY) === '1'
+  );
   const [activePage, setActivePage] = useState('dashboard');
   const [previousPage, setPreviousPage] = useState(null); // Track where user came from
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
@@ -8315,12 +8381,16 @@ const App = () => {
     }
   };
   
+  if (!unlocked) {
+    return React.createElement(PinGate, { onUnlock: () => setUnlocked(true) });
+  }
+
   return (
     <div className="app-container">
       <Sidebar activePage={activePage} onNavigate={handleNavigate} />
       <main className="main-content">
-        <Header 
-          breadcrumb={getBreadcrumb()} 
+        <Header
+          breadcrumb={getBreadcrumb()}
           searchQuery={globalSearchQuery}
           onSearchChange={setGlobalSearchQuery}
           searchResults={searchResults}
