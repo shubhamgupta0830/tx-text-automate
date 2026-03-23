@@ -60,12 +60,20 @@ const Sidebar = ({ activePage, onNavigate }) => {
             Flow Builder
             <span className="beta-badge">beta</span>
           </a>
-          <a 
+          <a
             className={`nav-item ${activePage === 'variables' ? 'active' : ''}`}
             onClick={() => onNavigate('variables')}
           >
             <i className="fas fa-key"></i>
             Variables
+            <span className="beta-badge">beta</span>
+          </a>
+          <a
+            className={`nav-item ${activePage === 'schedule-jobs' ? 'active' : ''}`}
+            onClick={() => onNavigate('schedule-jobs')}
+          >
+            <i className="fas fa-calendar-alt"></i>
+            Schedule Jobs
             <span className="beta-badge">beta</span>
           </a>
         </div>
@@ -7855,6 +7863,655 @@ const PinGate = ({ onUnlock }) => {
   );
 };
 
+// ===== Schedule Jobs Helpers =====
+const getScheduleLabel = (schedule) => {
+  switch (schedule.type) {
+    case 'interval': {
+      const mins = parseFloat(schedule.intervalMinutes);
+      if (mins < 60) return `Every ${mins} minute${mins !== 1 ? 's' : ''}`;
+      if (mins < 1440) return `Every ${mins / 60} hour${mins / 60 !== 1 ? 's' : ''}`;
+      return `Every ${mins / 1440} day${mins / 1440 !== 1 ? 's' : ''}`;
+    }
+    case 'daily':
+      return `Daily at ${schedule.dailyTime}`;
+    case 'weekly': {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return `Weekly on ${days[parseInt(schedule.weeklyDay)]} at ${schedule.weeklyTime}`;
+    }
+    case 'once':
+      return schedule.onceDateTime ? `Once at ${Utils.formatDate(schedule.onceDateTime)}` : 'One-time';
+    default:
+      return 'Unknown';
+  }
+};
+
+const calculateNextRun = (job) => {
+  if (job.status !== 'active') return null;
+  const now = new Date();
+  switch (job.schedule.type) {
+    case 'interval': {
+      const lastRunDate = job.lastRun?.date ? new Date(job.lastRun.date) : new Date(job.createdAt);
+      const intervalMs = parseFloat(job.schedule.intervalMinutes) * 60 * 1000;
+      const nextRun = new Date(lastRunDate.getTime() + intervalMs);
+      return nextRun;
+    }
+    case 'daily': {
+      const [hours, minutes] = job.schedule.dailyTime.split(':').map(Number);
+      const next = new Date(now);
+      next.setHours(hours, minutes, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      return next;
+    }
+    case 'weekly': {
+      const [hours, minutes] = job.schedule.weeklyTime.split(':').map(Number);
+      const dayNum = parseInt(job.schedule.weeklyDay);
+      const next = new Date(now);
+      next.setHours(hours, minutes, 0, 0);
+      const daysUntil = (dayNum - next.getDay() + 7) % 7;
+      if (daysUntil === 0 && next <= now) {
+        next.setDate(next.getDate() + 7);
+      } else {
+        next.setDate(next.getDate() + daysUntil);
+      }
+      return next;
+    }
+    case 'once':
+      return job.schedule.onceDateTime ? new Date(job.schedule.onceDateTime) : null;
+    default:
+      return null;
+  }
+};
+
+// ===== Schedule Job Detail View =====
+const ScheduleJobDetailView = ({ job, onBack, onViewExecution, onToggleStatus, onDelete }) => {
+  const scenario = MOCK_DATA.scenarios.find(s => s.id === job.scenarioId);
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const hasRunning = job.runs.some(r => r.status === 'running');
+    if (!hasRunning) return;
+    const interval = setInterval(() => forceUpdate(n => n + 1), 3000);
+    return () => clearInterval(interval);
+  }, [job.runs]);
+
+  const totalRuns = job.runs.length;
+  const passedRuns = job.runs.filter(r => r.status === 'passed').length;
+  const failedRuns = job.runs.filter(r => r.status === 'failed').length;
+  const successRate = totalRuns > 0 ? Math.round((passedRuns / totalRuns) * 100) : 0;
+  const nextRun = calculateNextRun(job);
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <button className="back-btn" onClick={onBack}>
+            <i className="fas fa-arrow-left"></i>
+            Back to Schedule Jobs
+          </button>
+          <h1 className="page-title">{job.name}</h1>
+          <p className="page-subtitle">
+            <i className="fas fa-bullseye"></i>
+            {scenario?.objective || 'Unknown scenario'}
+          </p>
+        </div>
+        <div className="page-header-actions">
+          <button
+            className={`btn ${job.status === 'active' ? 'btn-warning' : 'btn-success'}`}
+            onClick={() => onToggleStatus(job.id)}
+          >
+            <i className={`fas ${job.status === 'active' ? 'fa-pause' : 'fa-play'}`}></i>
+            {job.status === 'active' ? 'Pause' : 'Resume'}
+          </button>
+          <button className="btn btn-danger" onClick={() => onDelete(job.id)}>
+            <i className="fas fa-trash"></i>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <div className="schedule-detail-grid">
+        <div className="card schedule-info-card">
+          <div className="card-header">
+            <h3 className="card-title"><i className="fas fa-info-circle"></i> Job Details</h3>
+          </div>
+          <div className="card-body">
+            <div className="info-row">
+              <span className="info-label">Status</span>
+              <span className={`status-badge ${job.status === 'active' ? 'success' : 'warning'}`}>
+                <span className="status-dot"></span>
+                {job.status}
+              </span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Schedule</span>
+              <span className="info-value"><i className="fas fa-clock"></i> {getScheduleLabel(job.schedule)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Next Run</span>
+              <span className="info-value">
+                {nextRun ? Utils.formatDate(nextRun.toISOString()) : (job.status === 'paused' ? 'Paused' : 'N/A')}
+              </span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Model</span>
+              <span className="info-value">{BROWSER_USE_MODELS.find(m => m.id === job.model)?.name || job.model}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Last Run</span>
+              <span className="info-value">{job.lastRun ? Utils.formatRelativeTime(job.lastRun.date) : 'Never'}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Created</span>
+              <span className="info-value">{Utils.formatDate(job.createdAt)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card schedule-stats-card">
+          <div className="card-header">
+            <h3 className="card-title"><i className="fas fa-chart-bar"></i> Run Statistics</h3>
+          </div>
+          <div className="card-body">
+            <div className="schedule-run-stats">
+              <div className="run-stat-item">
+                <div className="run-stat-value">{totalRuns}</div>
+                <div className="run-stat-label">Total Runs</div>
+              </div>
+              <div className="run-stat-item success">
+                <div className="run-stat-value">{passedRuns}</div>
+                <div className="run-stat-label">Passed</div>
+              </div>
+              <div className="run-stat-item error">
+                <div className="run-stat-value">{failedRuns}</div>
+                <div className="run-stat-label">Failed</div>
+              </div>
+              <div className="run-stat-item">
+                <div className="run-stat-value">{successRate}%</div>
+                <div className="run-stat-label">Success Rate</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginTop: '1.5rem'}}>
+        <div className="card-header">
+          <h3 className="card-title">
+            <i className="fas fa-list"></i>
+            Run History ({totalRuns})
+          </h3>
+        </div>
+        <div className="card-body" style={{padding: 0}}>
+          {totalRuns === 0 ? (
+            <div className="empty-state" style={{padding: '3rem'}}>
+              <i className="fas fa-clock"></i>
+              <h3>No runs yet</h3>
+              <p>{job.status === 'active' ? 'This job will run automatically based on its schedule.' : 'Resume this job to start automated runs.'}</p>
+            </div>
+          ) : (
+            <table className="sched-runs-table">
+              <thead>
+                <tr>
+                  <th>Run #</th>
+                  <th>Started</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                  <th>Browser Actions</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {job.runs.map((run, index) => {
+                  const execution = MOCK_DATA.executions.find(e => e.id === run.executionId);
+                  const statusClass = Utils.getStatusClass(run.status);
+                  const browserActions = execution?.stepResults?.reduce((a, s) => a + (s.subSteps?.length || 0), 0) || run.browserActions || '-';
+                  return (
+                    <tr
+                      key={run.id}
+                      className={`sched-run-row clickable ${statusClass}`}
+                      onClick={() => {
+                        if (run.executionId && job.scenarioId) {
+                          onViewExecution(job.scenarioId, run.executionId);
+                        }
+                      }}
+                    >
+                      <td className="run-num">#{totalRuns - index}</td>
+                      <td>{Utils.formatDate(run.startTime)}</td>
+                      <td>{run.duration ? Utils.formatDuration(run.duration) : (run.status === 'running' ? <span className="running-text"><i className="fas fa-spinner fa-spin"></i> Running</span> : '-')}</td>
+                      <td>
+                        <span className={`status-badge ${statusClass}`}>
+                          <span className="status-dot"></span>
+                          {run.status}
+                        </span>
+                      </td>
+                      <td>{browserActions}</td>
+                      <td>
+                        {run.executionId && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={e => {
+                              e.stopPropagation();
+                              onViewExecution(job.scenarioId, run.executionId);
+                            }}
+                          >
+                            <i className="fas fa-eye"></i>
+                            View Details
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ===== Schedule Jobs Page =====
+const ScheduleJobsPage = ({ onViewExecution, onJobsChange }) => {
+  const [scheduledJobs, setScheduledJobs] = useState(() => StorageHelper.loadScheduledJobs());
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState(null);
+
+  // Form state
+  const [formJobName, setFormJobName] = useState('');
+  const [formScenarioId, setFormScenarioId] = useState('');
+  const [formScheduleType, setFormScheduleType] = useState('interval');
+  const [formIntervalMinutes, setFormIntervalMinutes] = useState(60);
+  const [formDailyTime, setFormDailyTime] = useState('09:00');
+  const [formWeeklyDay, setFormWeeklyDay] = useState('1');
+  const [formWeeklyTime, setFormWeeklyTime] = useState('09:00');
+  const [formOnceDateTime, setFormOnceDateTime] = useState('');
+  const [formModel, setFormModel] = useState(BROWSER_USE_MODELS[0].id);
+
+  const scenarios = MOCK_DATA.scenarios;
+
+  const saveJobs = (jobs) => {
+    setScheduledJobs(jobs);
+    StorageHelper.saveScheduledJobs(jobs);
+    if (onJobsChange) onJobsChange(jobs);
+  };
+
+  const handleCreateJob = () => {
+    if (!formJobName.trim() || !formScenarioId) {
+      alert('Please fill in Job Name and select a Scenario.');
+      return;
+    }
+    if (formScheduleType === 'once' && !formOnceDateTime) {
+      alert('Please set a date/time for one-time scheduling.');
+      return;
+    }
+
+    const newJob = {
+      id: `sched-${Date.now()}`,
+      name: formJobName.trim(),
+      scenarioId: formScenarioId,
+      schedule: {
+        type: formScheduleType,
+        intervalMinutes: formScheduleType === 'interval' ? parseInt(formIntervalMinutes) : undefined,
+        dailyTime: formScheduleType === 'daily' ? formDailyTime : undefined,
+        weeklyDay: formScheduleType === 'weekly' ? formWeeklyDay : undefined,
+        weeklyTime: formScheduleType === 'weekly' ? formWeeklyTime : undefined,
+        onceDateTime: formScheduleType === 'once' ? formOnceDateTime : undefined,
+      },
+      model: formModel,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      lastRun: null,
+      runs: []
+    };
+
+    saveJobs([newJob, ...scheduledJobs]);
+    setShowCreateModal(false);
+    setFormJobName('');
+    setFormScenarioId('');
+    setFormScheduleType('interval');
+    setFormIntervalMinutes(60);
+    setFormDailyTime('09:00');
+    setFormModel(BROWSER_USE_MODELS[0].id);
+    setFormOnceDateTime('');
+  };
+
+  const handleToggleStatus = (jobId) => {
+    const updated = scheduledJobs.map(j =>
+      j.id === jobId ? { ...j, status: j.status === 'active' ? 'paused' : 'active' } : j
+    );
+    saveJobs(updated);
+  };
+
+  const handleDelete = (jobId) => {
+    if (!window.confirm('Delete this scheduled job and all its run history?')) return;
+    saveJobs(scheduledJobs.filter(j => j.id !== jobId));
+    if (selectedJobId === jobId) setSelectedJobId(null);
+  };
+
+  // Detail view
+  if (selectedJobId) {
+    const job = scheduledJobs.find(j => j.id === selectedJobId);
+    if (!job) { setSelectedJobId(null); return null; }
+    return (
+      <ScheduleJobDetailView
+        job={job}
+        onBack={() => setSelectedJobId(null)}
+        onViewExecution={onViewExecution}
+        onToggleStatus={(id) => {
+          handleToggleStatus(id);
+          // Refresh local job reference
+          setSelectedJobId(null);
+          setTimeout(() => setSelectedJobId(id), 10);
+        }}
+        onDelete={(id) => {
+          handleDelete(id);
+          setSelectedJobId(null);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Schedule Jobs</h1>
+          <p className="page-subtitle">Automate scenario runs on a recurring schedule using the Browser Use API</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
+          <i className="fas fa-plus"></i>
+          New Scheduled Job
+        </button>
+      </div>
+
+      {scheduledJobs.length === 0 ? (
+        <div className="empty-state" style={{marginTop: '3rem'}}>
+          <i className="fas fa-calendar-alt"></i>
+          <h3>No Scheduled Jobs</h3>
+          <p>Create a scheduled job to run your scenarios automatically at specified intervals or times.</p>
+          <button className="btn btn-primary" style={{marginTop: '1rem'}} onClick={() => setShowCreateModal(true)}>
+            <i className="fas fa-plus"></i>
+            Create First Scheduled Job
+          </button>
+        </div>
+      ) : (
+        <div className="schedule-jobs-grid">
+          {scheduledJobs.map(job => {
+            const scenario = MOCK_DATA.scenarios.find(s => s.id === job.scenarioId);
+            const nextRun = calculateNextRun(job);
+            const totalRuns = job.runs.length;
+            const passedRuns = job.runs.filter(r => r.status === 'passed').length;
+            const failedRuns = job.runs.filter(r => r.status === 'failed').length;
+            const recentRuns = [...job.runs].slice(0, 8);
+
+            return (
+              <div
+                key={job.id}
+                className={`schedule-job-card ${job.status === 'paused' ? 'paused' : ''}`}
+                onClick={() => setSelectedJobId(job.id)}
+              >
+                <div className="sched-card-header">
+                  <div className="sched-card-title-row">
+                    <div className={`sched-status-dot ${job.status === 'active' ? 'active' : 'paused'}`}></div>
+                    <div className="sched-title-info">
+                      <h3 className="sched-job-name">{job.name}</h3>
+                      <p className="sched-job-scenario">
+                        <i className="fas fa-bullseye"></i>
+                        {scenario?.objective ? Utils.truncateText(scenario.objective, 60) : 'Unknown scenario'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="sched-card-actions" onClick={e => e.stopPropagation()}>
+                    <button
+                      className={`btn btn-sm ${job.status === 'active' ? 'btn-warning' : 'btn-success'}`}
+                      onClick={() => handleToggleStatus(job.id)}
+                      title={job.status === 'active' ? 'Pause job' : 'Resume job'}
+                    >
+                      <i className={`fas ${job.status === 'active' ? 'fa-pause' : 'fa-play'}`}></i>
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleDelete(job.id)}
+                      title="Delete job"
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="sched-card-meta">
+                  <div className="sched-meta-item">
+                    <i className="fas fa-clock"></i>
+                    <span>{getScheduleLabel(job.schedule)}</span>
+                  </div>
+                  {nextRun && (
+                    <div className="sched-meta-item">
+                      <i className="fas fa-calendar-check"></i>
+                      <span>Next: {Utils.formatDate(nextRun.toISOString())}</span>
+                    </div>
+                  )}
+                  <div className="sched-meta-item">
+                    <i className="fas fa-robot"></i>
+                    <span>{BROWSER_USE_MODELS.find(m => m.id === job.model)?.name || job.model}</span>
+                  </div>
+                </div>
+
+                <div className="sched-card-stats">
+                  <div className="sched-stat-pill">
+                    <i className="fas fa-list"></i>
+                    <span>{totalRuns} runs</span>
+                  </div>
+                  <div className="sched-stat-pill success">
+                    <i className="fas fa-check-circle"></i>
+                    <span>{passedRuns} passed</span>
+                  </div>
+                  <div className="sched-stat-pill error">
+                    <i className="fas fa-times-circle"></i>
+                    <span>{failedRuns} failed</span>
+                  </div>
+                </div>
+
+                {recentRuns.length > 0 && (
+                  <div className="sched-card-history">
+                    <span className="sched-history-label">Recent runs</span>
+                    <div className="sched-run-dots">
+                      {recentRuns.map(run => (
+                        <div
+                          key={run.id}
+                          className={`sched-run-dot ${Utils.getStatusClass(run.status)}`}
+                          title={`${Utils.formatDate(run.startTime)} — ${run.status}`}
+                        ></div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="sched-card-footer">
+                  <span className="sched-last-run">
+                    {job.lastRun ? `Last run ${Utils.formatRelativeTime(job.lastRun.date)}` : 'Never run'}
+                  </span>
+                  <span className="sched-view-link">
+                    View runs <i className="fas fa-arrow-right"></i>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create Job Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-content sched-create-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3><i className="fas fa-calendar-alt"></i> Create Scheduled Job</h3>
+              <button className="modal-close-btn" onClick={() => setShowCreateModal(false)}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Job Name <span style={{color:'var(--error)'}}>*</span></label>
+                <input
+                  className="form-input"
+                  placeholder="e.g., Daily Supply Chain Check"
+                  value={formJobName}
+                  onChange={e => setFormJobName(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Scenario <span style={{color:'var(--error)'}}>*</span></label>
+                <select
+                  className="form-input"
+                  value={formScenarioId}
+                  onChange={e => setFormScenarioId(e.target.value)}
+                >
+                  <option value="">Select a scenario...</option>
+                  {scenarios.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {Utils.truncateText(s.objective || s.id, 70)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Schedule Type <span style={{color:'var(--error)'}}>*</span></label>
+                <div className="sched-type-selector">
+                  {[
+                    { id: 'interval', label: 'Interval', icon: 'fa-redo' },
+                    { id: 'daily', label: 'Daily', icon: 'fa-sun' },
+                    { id: 'weekly', label: 'Weekly', icon: 'fa-calendar-week' },
+                    { id: 'once', label: 'One-time', icon: 'fa-flag' }
+                  ].map(type => (
+                    <button
+                      key={type.id}
+                      className={`sched-type-btn ${formScheduleType === type.id ? 'active' : ''}`}
+                      onClick={() => setFormScheduleType(type.id)}
+                    >
+                      <i className={`fas ${type.icon}`}></i>
+                      <span>{type.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {formScheduleType === 'interval' && (
+                <div className="form-group">
+                  <label className="form-label">Run every</label>
+                  <div className="interval-input-row">
+                    <input
+                      type="number"
+                      className="form-input interval-number"
+                      min="1"
+                      max="10080"
+                      value={formIntervalMinutes}
+                      onChange={e => setFormIntervalMinutes(e.target.value)}
+                    />
+                    <span className="interval-unit-label">minutes</span>
+                  </div>
+                  <div className="interval-presets">
+                    {[
+                      { val: 15, label: '15m' },
+                      { val: 30, label: '30m' },
+                      { val: 60, label: '1h' },
+                      { val: 120, label: '2h' },
+                      { val: 360, label: '6h' },
+                      { val: 720, label: '12h' },
+                      { val: 1440, label: '1d' }
+                    ].map(p => (
+                      <button
+                        key={p.val}
+                        className={`preset-btn ${parseInt(formIntervalMinutes) === p.val ? 'active' : ''}`}
+                        onClick={() => setFormIntervalMinutes(p.val)}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {formScheduleType === 'daily' && (
+                <div className="form-group">
+                  <label className="form-label">Run time (daily)</label>
+                  <input
+                    type="time"
+                    className="form-input"
+                    value={formDailyTime}
+                    onChange={e => setFormDailyTime(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {formScheduleType === 'weekly' && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Day of week</label>
+                    <select
+                      className="form-input"
+                      value={formWeeklyDay}
+                      onChange={e => setFormWeeklyDay(e.target.value)}
+                    >
+                      {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, i) => (
+                        <option key={i} value={String(i)}>{day}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Time</label>
+                    <input
+                      type="time"
+                      className="form-input"
+                      value={formWeeklyTime}
+                      onChange={e => setFormWeeklyTime(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
+              {formScheduleType === 'once' && (
+                <div className="form-group">
+                  <label className="form-label">Run at</label>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={formOnceDateTime}
+                    onChange={e => setFormOnceDateTime(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Model</label>
+                <select
+                  className="form-input"
+                  value={formModel}
+                  onChange={e => setFormModel(e.target.value)}
+                >
+                  {BROWSER_USE_MODELS.map(m => (
+                    <option key={m.id} value={m.id}>{m.name} — {m.hint}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleCreateJob}>
+                <i className="fas fa-calendar-alt"></i>
+                Create Job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ===== Main App Component =====
 const App = () => {
   const [unlocked, setUnlocked] = useState(
@@ -8050,7 +8707,31 @@ const App = () => {
               
               // Remove from active tasks
               StorageHelper.removeActiveTask(task.taskId);
-              
+
+              // If this execution belongs to a scheduled job run, update that run's status
+              const scheduledJobId = MOCK_DATA.executions[execIndex]?.metadata?.scheduledJobId
+                || finalExecution.metadata?.scheduledJobId;
+              if (scheduledJobId) {
+                const schedJobs = StorageHelper.loadScheduledJobs();
+                const sjIdx = schedJobs.findIndex(j => j.id === scheduledJobId);
+                if (sjIdx >= 0) {
+                  const rIdx = schedJobs[sjIdx].runs.findIndex(r => r.executionId === task.executionId);
+                  if (rIdx >= 0) {
+                    const endTime = finalExecution.endTime || new Date().toISOString();
+                    schedJobs[sjIdx].runs[rIdx] = {
+                      ...schedJobs[sjIdx].runs[rIdx],
+                      status: finalExecution.status,
+                      endTime,
+                      duration: finalExecution.duration
+                    };
+                    if (schedJobs[sjIdx].lastRun?.runId === schedJobs[sjIdx].runs[rIdx].id) {
+                      schedJobs[sjIdx].lastRun = { ...schedJobs[sjIdx].lastRun, status: finalExecution.status, date: endTime };
+                    }
+                    StorageHelper.saveScheduledJobs(schedJobs);
+                  }
+                }
+              }
+
               // Trigger re-render
               setRefreshKey(prev => prev + 1);
             }
@@ -8087,6 +8768,329 @@ const App = () => {
     return () => clearInterval(pollInterval);
   }, []); // Empty dependency array - only run once on mount
   
+  // ===== Scheduled Jobs Auto-Runner =====
+  // Mode is controlled by SCHEDULER_CONFIG (set via browser console in utils.js).
+  // 'frontend' — runs in this browser tab (default).
+  // 'backend'  — delegates to the Render backend server.
+  useEffect(() => {
+    const BACKEND_URL = SCHEDULER_CONFIG.backendUrl;
+    const useBackend = SCHEDULER_CONFIG.mode === 'backend' && !!BACKEND_URL;
+
+    // ── BACKEND MODE ────────────────────────────────────────────────────────
+    if (useBackend) {
+      console.log(`[Scheduler] Backend mode — ${BACKEND_URL}`);
+
+      // Send all jobs (with embedded scenario) to backend so it can run them
+      const syncJobsToBackend = async () => {
+        const jobs = StorageHelper.loadScheduledJobs();
+        const jobsWithScenarios = jobs.map(job => ({
+          ...job,
+          scenario: MOCK_DATA.scenarios.find(s => s.id === job.scenarioId) || null,
+        }));
+        try {
+          await fetch(`${BACKEND_URL}/api/jobs/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jobs: jobsWithScenarios }),
+          });
+        } catch (err) {
+          console.warn('[Scheduler/Backend] Sync failed:', err.message);
+        }
+      };
+
+      // Pull run results from backend and merge into localStorage
+      const pollBackendForResults = async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/jobs`);
+          if (!res.ok) return;
+          const backendJobs = await res.json();
+          const localJobs = StorageHelper.loadScheduledJobs();
+          let jobsChanged = false;
+
+          for (const bJob of backendJobs) {
+            const localJobIdx = localJobs.findIndex(j => j.id === bJob.id);
+            if (localJobIdx < 0) continue;
+
+            for (const bRun of (bJob.runs || [])) {
+              const localRunIdx = localJobs[localJobIdx].runs.findIndex(r => r.id === bRun.id);
+
+              if (localRunIdx < 0) {
+                // New run seen from backend — add to localStorage
+                const { taskResult, ...runMeta } = bRun;
+                localJobs[localJobIdx].runs = [runMeta, ...(localJobs[localJobIdx].runs || [])];
+                jobsChanged = true;
+
+                const scenario = MOCK_DATA.scenarios.find(s => s.id === bJob.scenarioId);
+                if (scenario) {
+                  if (bRun.status === 'running') {
+                    // Create preliminary execution so Live tab can show the session
+                    if (!MOCK_DATA.executions.find(e => e.id === bRun.executionId)) {
+                      MOCK_DATA.executions.unshift({
+                        id: bRun.executionId,
+                        scenarioId: scenario.id,
+                        scenarioObjective: scenario.objective,
+                        status: 'running',
+                        startTime: bRun.startTime,
+                        endTime: null,
+                        duration: null,
+                        progress: { currentStep: 0, totalSteps: scenario.steps.length, percentage: 0 },
+                        metadata: {
+                          browser: 'chrome', viewportWidth: 1920, viewportHeight: 1080,
+                          triggeredBy: 'scheduled', scheduledJobId: bJob.id,
+                          browserUseTaskId: bRun.browserUseTaskId || null,
+                          browserUseSessionId: bRun.browserUseSessionId || null,
+                        },
+                        stepResults: scenario.steps.map(step => ({
+                          stepId: step.id, stepOrder: step.order, stepDescription: step.description,
+                          status: 'running', startTime: bRun.startTime, endTime: null, duration: null, subSteps: []
+                        })),
+                        logs: [{ timestamp: bRun.startTime, level: 'info', message: `Scheduled job "${bJob.name}" triggered by backend` }]
+                      });
+                      StorageHelper.saveExecutions(MOCK_DATA.executions);
+                    }
+                  } else if (taskResult) {
+                    // Completed — build full execution record
+                    const finalExecution = BrowserUseAPI.transformTaskToExecution(taskResult, scenario, bRun.executionId);
+                    finalExecution.metadata.triggeredBy = 'scheduled';
+                    finalExecution.metadata.scheduledJobId = bJob.id;
+                    const execIdx = MOCK_DATA.executions.findIndex(e => e.id === bRun.executionId);
+                    if (execIdx >= 0) MOCK_DATA.executions[execIdx] = finalExecution;
+                    else MOCK_DATA.executions.unshift(finalExecution);
+                    StorageHelper.saveExecutions(MOCK_DATA.executions);
+                  }
+                }
+              } else if (localJobs[localJobIdx].runs[localRunIdx].status !== bRun.status) {
+                // Existing run whose status changed on backend
+                const { taskResult, ...runMeta } = bRun;
+                localJobs[localJobIdx].runs[localRunIdx] = {
+                  ...localJobs[localJobIdx].runs[localRunIdx], ...runMeta
+                };
+                jobsChanged = true;
+
+                if (bRun.status !== 'running' && taskResult) {
+                  const scenario = MOCK_DATA.scenarios.find(s => s.id === bJob.scenarioId);
+                  if (scenario) {
+                    const finalExecution = BrowserUseAPI.transformTaskToExecution(taskResult, scenario, bRun.executionId);
+                    finalExecution.metadata.triggeredBy = 'scheduled';
+                    finalExecution.metadata.scheduledJobId = bJob.id;
+                    const execIdx = MOCK_DATA.executions.findIndex(e => e.id === bRun.executionId);
+                    if (execIdx >= 0) MOCK_DATA.executions[execIdx] = finalExecution;
+                    else MOCK_DATA.executions.unshift(finalExecution);
+                    StorageHelper.saveExecutions(MOCK_DATA.executions);
+                  }
+                }
+              }
+            }
+
+            // Sync lastRun if backend has a newer one
+            if (bJob.lastRun && (bJob.lastRun.date || '') > (localJobs[localJobIdx].lastRun?.date || '')) {
+              localJobs[localJobIdx].lastRun = bJob.lastRun;
+              jobsChanged = true;
+            }
+          }
+
+          if (jobsChanged) {
+            StorageHelper.saveScheduledJobs(localJobs);
+            setRefreshKey(prev => prev + 1);
+          }
+        } catch (err) {
+          console.warn('[Scheduler/Backend] Poll failed:', err.message);
+        }
+      };
+
+      // Initial sync + poll, then repeat every 30s
+      syncJobsToBackend().then(() => pollBackendForResults());
+      const backendInterval = setInterval(async () => {
+        await syncJobsToBackend();
+        await pollBackendForResults();
+      }, 30000);
+      return () => clearInterval(backendInterval);
+    }
+
+    // ── FRONTEND MODE (default) ─────────────────────────────────────────────
+    console.log('[Scheduler] Frontend mode');
+
+    const runScheduledJob = async (job) => {
+      const scenario = MOCK_DATA.scenarios.find(s => s.id === job.scenarioId);
+      if (!scenario) return;
+
+      const runId = `sched-run-${job.id}-${Date.now()}`;
+      const executionId = `exec-sched-${runId}`;
+      const currentTime = new Date().toISOString();
+
+      // Create initial execution entry
+      const initialExecution = {
+        id: executionId,
+        scenarioId: scenario.id,
+        scenarioObjective: scenario.objective,
+        status: 'running',
+        startTime: currentTime,
+        endTime: null,
+        duration: null,
+        progress: { currentStep: 0, totalSteps: scenario.steps.length, percentage: 0 },
+        metadata: {
+          browser: 'chrome', viewportWidth: 1920, viewportHeight: 1080,
+          triggeredBy: 'scheduled', scheduledJobId: job.id
+        },
+        stepResults: scenario.steps.map(step => ({
+          stepId: step.id, stepOrder: step.order, stepDescription: step.description,
+          status: 'running', startTime: currentTime, endTime: null, duration: null, subSteps: []
+        })),
+        logs: [{ timestamp: currentTime, level: 'info', message: `Scheduled job "${job.name}" triggered execution` }]
+      };
+      MOCK_DATA.executions.unshift(initialExecution);
+      StorageHelper.saveExecutions(MOCK_DATA.executions);
+
+      // Mark this run in the scheduled job
+      const newRun = { id: runId, scheduledJobId: job.id, executionId, status: 'running', startTime: currentTime, endTime: null, duration: null };
+      const allJobs = StorageHelper.loadScheduledJobs();
+      const jobIdx = allJobs.findIndex(j => j.id === job.id);
+      if (jobIdx >= 0) {
+        allJobs[jobIdx].runs = [newRun, ...(allJobs[jobIdx].runs || [])];
+        allJobs[jobIdx].lastRun = { runId, status: 'running', date: currentTime };
+        StorageHelper.saveScheduledJobs(allJobs);
+      }
+
+      try {
+        const stepsText = scenario.steps.map((s, i) => `${i + 1}. ${s.description}`).join('\n');
+        const taskPrompt = `Objective: ${scenario.objective}\n\nSteps to execute:\n${stepsText}`;
+
+        const createResult = await BrowserUseAPI.createTask(taskPrompt, {
+          llm: job.model || BROWSER_USE_MODELS[0].id,
+          maxSteps: Math.max(MAX_STEPS_MINIMUM, scenario.steps.length * MAX_STEPS_PER_SCENARIO_STEP),
+          highlightElements: true,
+          vision: true,
+          metadata: { scenarioId: scenario.id, executionId, scheduledJobId: job.id }
+        });
+
+        // Save taskId + sessionId immediately so the Live tab can show the session
+        const execIdxEarly = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+        if (execIdxEarly >= 0) {
+          MOCK_DATA.executions[execIdxEarly].metadata.browserUseTaskId = createResult.id;
+          MOCK_DATA.executions[execIdxEarly].metadata.browserUseSessionId = createResult.sessionId;
+          StorageHelper.saveExecutions(MOCK_DATA.executions);
+        }
+        // Register as active task so the background poller tracks it
+        const activeTasks = StorageHelper.loadActiveTasks();
+        activeTasks.push({ taskId: createResult.id, scenarioId: scenario.id, executionId, startTime: currentTime });
+        StorageHelper.saveActiveTasks(activeTasks);
+
+        const finalResult = await BrowserUseAPI.pollTaskUntilComplete(createResult.id, null, 3000, 600000);
+        const finalExecution = BrowserUseAPI.transformTaskToExecution(finalResult, scenario, executionId);
+        const execIdx = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+        if (execIdx >= 0) MOCK_DATA.executions[execIdx] = finalExecution;
+        StorageHelper.saveExecutions(MOCK_DATA.executions);
+
+        // Update scheduled job run result
+        const endTime = new Date().toISOString();
+        const duration = new Date(endTime) - new Date(currentTime);
+        const updatedJobs = StorageHelper.loadScheduledJobs();
+        const uJobIdx = updatedJobs.findIndex(j => j.id === job.id);
+        if (uJobIdx >= 0) {
+          const runIdx = updatedJobs[uJobIdx].runs.findIndex(r => r.id === runId);
+          if (runIdx >= 0) {
+            updatedJobs[uJobIdx].runs[runIdx] = { ...updatedJobs[uJobIdx].runs[runIdx], status: finalExecution.status, endTime, duration };
+          }
+          updatedJobs[uJobIdx].lastRun = { runId, status: finalExecution.status, date: endTime };
+          if (updatedJobs[uJobIdx].schedule.type === 'once') {
+            updatedJobs[uJobIdx].status = 'paused';
+          }
+          StorageHelper.saveScheduledJobs(updatedJobs);
+        }
+        setRefreshKey(prev => prev + 1);
+
+      } catch (error) {
+        console.error(`Scheduled job "${job.name}" failed:`, error);
+        const endTime = new Date().toISOString();
+        const execIdx = MOCK_DATA.executions.findIndex(e => e.id === executionId);
+        if (execIdx >= 0) {
+          MOCK_DATA.executions[execIdx].status = 'failed';
+          MOCK_DATA.executions[execIdx].endTime = endTime;
+          StorageHelper.saveExecutions(MOCK_DATA.executions);
+        }
+        const updatedJobs = StorageHelper.loadScheduledJobs();
+        const uJobIdx = updatedJobs.findIndex(j => j.id === job.id);
+        if (uJobIdx >= 0) {
+          const runIdx = updatedJobs[uJobIdx].runs.findIndex(r => r.id === runId);
+          if (runIdx >= 0) updatedJobs[uJobIdx].runs[runIdx] = { ...updatedJobs[uJobIdx].runs[runIdx], status: 'failed', endTime };
+          updatedJobs[uJobIdx].lastRun = { runId, status: 'failed', date: endTime };
+          StorageHelper.saveScheduledJobs(updatedJobs);
+        }
+        setRefreshKey(prev => prev + 1);
+      }
+    };
+
+    const checkScheduledJobs = () => {
+      const jobs = StorageHelper.loadScheduledJobs();
+      const now = new Date();
+      jobs.forEach(job => {
+        if (job.status !== 'active') return;
+        const nextRun = calculateNextRun(job);
+        if (nextRun && nextRun <= now) {
+          console.log(`[Scheduler] Triggering job: ${job.name}`);
+          runScheduledJob(job);
+        }
+      });
+    };
+
+    // On mount: resolve any runs stuck as 'running' from a previous session
+    const resolveStaleRuns = async () => {
+      const jobs = StorageHelper.loadScheduledJobs();
+      let changed = false;
+      for (const job of jobs) {
+        for (let i = 0; i < job.runs.length; i++) {
+          const run = job.runs[i];
+          if (run.status !== 'running') continue;
+          const execution = MOCK_DATA.executions.find(e => e.id === run.executionId);
+          const taskId = execution?.metadata?.browserUseTaskId;
+          if (!taskId) {
+            job.runs[i] = { ...run, status: 'failed', endTime: new Date().toISOString() };
+            if (job.lastRun?.runId === run.id) job.lastRun = { ...job.lastRun, status: 'failed' };
+            changed = true;
+            continue;
+          }
+          try {
+            const taskResult = await BrowserUseAPI.getTask(taskId);
+            if (taskResult.status === 'started' || taskResult.status === 'running') {
+              const activeTasks = StorageHelper.loadActiveTasks();
+              if (!activeTasks.some(t => t.taskId === taskId)) {
+                activeTasks.push({ taskId, scenarioId: job.scenarioId, executionId: run.executionId, startTime: run.startTime });
+                StorageHelper.saveActiveTasks(activeTasks);
+              }
+            } else {
+              const scenario = MOCK_DATA.scenarios.find(s => s.id === job.scenarioId);
+              const finalStatus = taskResult.status === 'finished'
+                ? (taskResult.isSuccess || taskResult.judgeVerdict ? 'passed' : 'failed')
+                : 'failed';
+              const endTime = taskResult.finishedAt || new Date().toISOString();
+              job.runs[i] = { ...run, status: finalStatus, endTime, duration: new Date(endTime) - new Date(run.startTime) };
+              if (job.lastRun?.runId === run.id) job.lastRun = { ...job.lastRun, status: finalStatus, date: endTime };
+              changed = true;
+              if (scenario) {
+                const finalExecution = BrowserUseAPI.transformTaskToExecution(taskResult, scenario, run.executionId);
+                const execIdx = MOCK_DATA.executions.findIndex(e => e.id === run.executionId);
+                if (execIdx >= 0) {
+                  MOCK_DATA.executions[execIdx] = finalExecution;
+                  StorageHelper.saveExecutions(MOCK_DATA.executions);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[Scheduler] Could not resolve stale run:', run.id, e.message);
+          }
+        }
+      }
+      if (changed) {
+        StorageHelper.saveScheduledJobs(jobs);
+        setRefreshKey(prev => prev + 1);
+      }
+    };
+
+    resolveStaleRuns().then(() => checkScheduledJobs());
+    const schedulerInterval = setInterval(checkScheduledJobs, 30000);
+    return () => clearInterval(schedulerInterval);
+  }, []); // Run once on mount
+
   // Save data to localStorage whenever it changes
   const persistData = useCallback(() => {
     StorageHelper.saveScenarios(MOCK_DATA.scenarios);
@@ -8280,6 +9284,8 @@ const App = () => {
         return ['TestAutomate', 'Flow Builder'];
       case 'variables':
         return ['TestAutomate', 'Settings', 'Variables'];
+      case 'schedule-jobs':
+        return ['TestAutomate', 'Schedule Jobs'];
       default:
         return ['TestAutomate'];
     }
@@ -8372,8 +9378,16 @@ const App = () => {
         );
       case 'variables':
         return (
-          <VariablesPage 
+          <VariablesPage
             onVariablesChange={() => setRefreshKey(prev => prev + 1)}
+          />
+        );
+      case 'schedule-jobs':
+        return (
+          <ScheduleJobsPage
+            key={refreshKey}
+            onViewExecution={handleViewExecution}
+            onJobsChange={() => setRefreshKey(prev => prev + 1)}
           />
         );
       default:

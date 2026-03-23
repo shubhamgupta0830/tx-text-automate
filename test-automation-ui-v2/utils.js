@@ -224,8 +224,10 @@ const formatApiError = (detail, fallback) => {
 };
 
 const BrowserUseAPI = {
-  // API Configuration
-  API_KEY: 'bu_CMx8eOdVbfDbcQcTl_FdozsaGfR3hV3O_l65Is4Erg0',
+  // API Configuration — key loaded from config.js (gitignored)
+  get API_KEY() {
+    return (window.APP_CONFIG && window.APP_CONFIG.BROWSER_USE_API_KEY) || '';
+  },
   BASE_URL: 'https://api.browser-use.com/api/v2',
 
   // Create headers for API requests
@@ -540,8 +542,37 @@ const BrowserUseAPI = {
   }
 };
 
+// ===== Scheduler Configuration =====
+// Toggle between 'frontend' (browser-tab-based) and 'backend' (Render server) scheduling.
+// Set via browser console — no code change needed:
+//   SCHEDULER_CONFIG.setMode('backend')
+//   SCHEDULER_CONFIG.setBackendUrl('https://your-app.onrender.com')
+// Changes take effect on next page reload.
+const SCHEDULER_CONFIG = {
+  get mode() {
+    return localStorage.getItem('trinamix_scheduler_mode') || 'frontend';
+  },
+  get backendUrl() {
+    const url = localStorage.getItem('trinamix_scheduler_backend_url') || '';
+    return url.replace(/\/$/, '') || null;
+  },
+  setMode(mode) {
+    if (mode !== 'frontend' && mode !== 'backend') {
+      console.error('[Scheduler] mode must be "frontend" or "backend"');
+      return;
+    }
+    localStorage.setItem('trinamix_scheduler_mode', mode);
+    console.log(`[Scheduler] Mode set to "${mode}". Reload the page to apply.`);
+  },
+  setBackendUrl(url) {
+    localStorage.setItem('trinamix_scheduler_backend_url', url);
+    console.log(`[Scheduler] Backend URL set to "${url}". Reload the page to apply.`);
+  },
+};
+
 // Export for use in app.js
 if (typeof window !== 'undefined') {
   window.Utils = Utils;
   window.BrowserUseAPI = BrowserUseAPI;
+  window.SCHEDULER_CONFIG = SCHEDULER_CONFIG;
 }

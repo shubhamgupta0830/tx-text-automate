@@ -22,7 +22,8 @@ const STORAGE_KEYS = {
   DATA_VERSION: 'trinamix_data_version',
   FLOW_RUNS: 'trinamix_flow_runs',
   VARIABLES: 'trinamix_variables',
-  ACTIVE_TASKS: 'trinamix_active_tasks'
+  ACTIVE_TASKS: 'trinamix_active_tasks',
+  SCHEDULED_JOBS: 'trinamix_scheduled_jobs'
 };
 
 // Increment this when folder structure changes to force refresh
@@ -223,6 +224,26 @@ const StorageHelper = {
       StorageHelper.saveActiveTasks(filtered);
     } catch (e) {
       console.error('Error removing active task:', e);
+    }
+  },
+
+  // Save scheduled jobs to localStorage
+  saveScheduledJobs: (jobs) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SCHEDULED_JOBS, JSON.stringify(jobs));
+    } catch (e) {
+      console.error('Error saving scheduled jobs to localStorage:', e);
+    }
+  },
+
+  // Load scheduled jobs from localStorage
+  loadScheduledJobs: () => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.SCHEDULED_JOBS);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error('Error loading scheduled jobs from localStorage:', e);
+      return [];
     }
   }
 };
